@@ -225,6 +225,96 @@ def lower_input(path, dur):
     return ["-loop", "1", "-t", f"{dur:.2f}", "-i", str(path)], (w, h)
 
 
+_lower_cache = {}
+
+
+def lower_info(path):
+    """
+    Analisa o Lower: cor de fundo pra tirar (ex: azul/verde de chroma key), a área que tem o desenho de verdade
+    e onde ele fica no original. Retorna dict com: size (w,h), key (cor hex ou None), box (x,y,w,h em px),
+    cx, cy (centro do desenho, 0 a 1) e wfrac (largura do desenho em relação à largura do quadro).
+    """
+    import numpy as np
+    path = Path(path)
+    stamp = (str(path), path.stat().st_mtime)
+    if stamp in _lower_cache:
+        return _lower_cache[stamp]
+    is_vid = path.suffix.lower() in VIDEO_EXT
+    frames = []
+    if is_vid:
+        lw, lh, dur = probe(path)
+        for frac in (0.05, 0.25, 0.5, 0.75, 0.95):
+            tmp = path.with_name(f"_analise_{int(frac * 100)}.png")
+            try:
+                run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-ss", f"{max(0.0, dur * frac):.2f}", "-i", str(path),
+                     "-frames:v", "1", "-update", "1", str(tmp)], timeout=60)
+                if tmp.exists():
+                    with Image.open(tmp) as im:
+                        frames.append(np.asarray(im.convert("RGBA")).astype(np.int16))
+            finally:
+                tmp.unlink(missing_ok=True)
+    else:
+        with Image.open(path) as im:
+            lw, lh = im.size
+            frames.append(np.asarray(im.convert("RGBA")).astype(np.int16))
+    if not frames:
+        info = {"size": (lw, lh), "key": None, "box": (0, 0, lw, lh), "cx": 0.5, "cy": 0.5, "wfrac": 1.0}
+        _lower_cache[stamp] = info
+        return info
+    f0 = frames[0]
+    h, w = f0.shape[:2]
+    has_alpha = bool((f0[..., 3] < 250).mean() > 0.2)
+    key = None
+    if not has_alpha:
+        k = max(4, min(w, h) // 40)
+        corners = np.concatenate([f0[:k, :k, :3].reshape(-1, 3), f0[:k, -k:, :3].reshape(-1, 3),
+                                  f0[-k:, :k, :3].reshape(-1, 3), f0[-k:, -k:, :3].reshape(-1, 3)])
+        med = np.median(corners, axis=0)
+        if np.abs(corners - med).max(axis=1).mean() < 25:      # cantos da mesma cor: é fundo pra tirar
+            key = med.astype(int)
+    mask = np.zeros((h, w), bool)
+    for fr in frames:
+        if key is not None:
+            mask |= np.abs(fr[..., :3] - key).sum(axis=2) > 90
+        else:
+            mask |= fr[..., 3] > 20
+    ys, xs = np.nonzero(mask)
+    if len(xs) == 0:
+        x0, y0, x1, y1 = 0, 0, w, h
+    else:
+        pad = int(min(w, h) * 0.01)
+        x0, y0 = max(0, xs.min() - pad), max(0, ys.min() - pad)
+        x1, y1 = min(w, xs.max() + pad + 1), min(h, ys.max() + pad + 1)
+    bw, bh = even(x1 - x0), even(y1 - y0)
+    x0, y0 = min(x0, w - bw), min(y0, h - bh)
+    info = {"size": (lw, lh), "key": ("0x%02X%02X%02X" % tuple(int(c) for c in key)) if key is not None else None,
+            "box": (int(x0), int(y0), int(bw), int(bh)), "cx": float((x0 + bw / 2) / w), "cy": float((y0 + bh / 2) / h),
+            "wfrac": float(bw / w)}
+    _lower_cache[stamp] = info
+    return info
+
+
+def lower_filter(info, target_w):
+    """Filtro: recorta só o desenho, tira o fundo (se tiver) e deixa na largura certa."""
+    x, y, bw, bh = info["box"]
+    f = f"crop={bw}:{bh}:{x}:{y},"
+    if info["key"]:
+        f += f"colorkey={info['key']}:0.30:0.12,"
+    return f + f"scale={even(target_w)}:-2,"
+
+
+def lower_preview_png(path, out):
+    """Imagem do Lower já sem fundo e recortada (pra prévia no painel)."""
+    info = lower_info(path)
+    vid = Path(path).suffix.lower() in VIDEO_EXT
+    seek = ["-ss", f"{probe(path)[2] * 0.5:.2f}"] if vid else []
+    x, y, bw, bh = info["box"]
+    vf = f"crop={bw}:{bh}:{x}:{y}" + (f",colorkey={info['key']}:0.30:0.12" if info["key"] else "") + ",format=rgba"
+    run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", *seek, "-i", str(path), "-frames:v", "1", "-update", "1",
+         "-vf", vf, str(out)], timeout=60)
+    return info
+
+
 def horizontal_final(src, out, text=None, trim=None, audio_mode="auto"):
     """Horizontal pra baixar: com o corte manual (trim) e a marca d'água, se tiver."""
     vw, vh, full = probe(src)
@@ -236,14 +326,12 @@ def horizontal_final(src, out, text=None, trim=None, audio_mode="auto"):
     png = Path(out).with_suffix(".marca.png")
     try:
         inputs = ["-ss", f"{ts:.2f}", "-t", f"{dur:.2f}", "-i", str(src)]
-        if isinstance(text, Path):          # Lower (imagem/vídeo do campeonato)
-            args, (lw, lh) = lower_input(text, dur)
+        if isinstance(text, Path):          # Lower (imagem/vídeo do campeonato), sem fundo e recortado
+            args, _ = lower_input(text, dur)
             inputs += args
-            if lh / lw > 1.2:                # Lower feito pra tela inteira em pé: centraliza na altura
-                flt = f"[1:v]scale=-2:{even(vh)},format=rgba[lw];[0:v][lw]overlay=(W-w)/2:0:shortest=1[v]"
-            else:
-                tw = even(vw * 0.45)
-                flt = f"[1:v]scale={tw}:-2,format=rgba[lw];[0:v][lw]overlay=(W-w)/2:H-h-H*0.04:shortest=1[v]"
+            info = lower_info(text)
+            tw = min(vw * 0.45, vw * info["wfrac"] * 0.6)
+            flt = f"[1:v]{lower_filter(info, tw)}format=rgba[lw];[0:v][lw]overlay=(W-w)/2:H-h-H*0.04:shortest=1[v]"
         elif text:
             _, h = watermark_png(text, png, vw, frac=0.026)
             y = int(vh - h - vh * 0.05)
@@ -481,15 +569,14 @@ def make_vertical(h_path, out, thumb, cam=None, caption="", cap_secs=10, layout=
         cap_win = (min(a, dur), max(min(b, dur if b < 1e5 else b), min(a, dur) + 0.5))
     wm_png = Path(out).with_suffix(".marca.png")
     wm_idx, wm_y, wm_xc, wm_pre, wm_args = None, 0, None, "", []
-    if isinstance(watermark, Path):      # Lower do campeonato (imagem ou vídeo)
+    if isinstance(watermark, Path):      # Lower do campeonato (imagem ou vídeo), sem fundo e recortado
         wm_args, (lw, lh) = lower_input(watermark, dur)
-        wx, wy = wm_pos if wm_pos else (0.5, 0.80)
-        if lh / lw > 1.2:                # feito pra tela inteira em pé
-            wm_pre, wm_y, wm_xc = f"scale={W}:{H},", 0, None
-        else:
-            tw = even(W * 0.86)
-            th = int(tw * lh / lw)
-            wm_pre, wm_y, wm_xc = f"scale={tw}:-2,", int(H * wy) - th // 2, W * wx
+        info = lower_info(watermark)
+        full_design = lh / lw > 1.2      # feito pra tela inteira em pé: mantém o tamanho do desenho original
+        tw = W * info["wfrac"] if full_design else W * 0.86
+        th = tw * info["box"][3] / max(1, info["box"][2])
+        wx, wy = wm_pos if wm_pos else ((info["cx"], info["cy"]) if full_design else (0.5, 0.80))
+        wm_pre, wm_y, wm_xc = lower_filter(info, tw), int(H * wy - th / 2), W * wx
         wm_idx = 2 if cap_h else 1
     elif watermark:
         _, wm_h = watermark_png(watermark, wm_png, W, frac=0.052)   # grande o bastante pra ler no celular

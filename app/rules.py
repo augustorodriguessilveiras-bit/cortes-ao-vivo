@@ -149,6 +149,8 @@ def lower_file(name):
     if not k or not RULES[k].get("lower"):
         return None
     for f in sorted(LOWERS_DIR.glob(f"{k}.*")):
+        if f.name.startswith("_"):
+            continue
         if f.suffix.lower() in IMG_EXT + VID_EXT:
             return f
     return None
@@ -171,7 +173,17 @@ def public(name):
         return None
     r = RULES[k]
     lf = lower_file(name)
-    return {"key": k, "label": r["label"], "watermark": r.get("watermark"), "title_tag": r.get("title_tag"),
-            "mention": r.get("mention"), "notes": r.get("notes", []), "lower": bool(r.get("lower")),
-            "lower_url": f"/api/rules/{k}/lower?v={int(lf.stat().st_mtime)}" if lf else None,
-            "lower_missing": bool(r.get("lower")) and not lf, "safe": bool(r.get("safe"))}
+    out = {"key": k, "label": r["label"], "watermark": r.get("watermark"), "title_tag": r.get("title_tag"),
+           "mention": r.get("mention"), "notes": r.get("notes", []), "lower": bool(r.get("lower")),
+           "lower_url": f"/api/rules/{k}/lower_preview?v={int(lf.stat().st_mtime)}" if lf else None,
+           "lower_missing": bool(r.get("lower")) and not lf, "safe": bool(r.get("safe"))}
+    if lf:
+        try:
+            from . import render
+            info = render.lower_info(lf)
+            full = info["size"][1] / info["size"][0] > 1.2
+            out.update(lower_wf=info["wfrac"] if full else 0.86, lower_x=info["cx"] if full else 0.5,
+                       lower_y=info["cy"] if full else 0.8)
+        except Exception:
+            pass
+    return out

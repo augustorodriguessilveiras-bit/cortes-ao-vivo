@@ -369,6 +369,18 @@ def get_lower(key: str):
     return FileResponse(f)
 
 
+@app.get("/api/rules/{key}/lower_preview")
+def lower_preview(key: str):
+    """Lower já sem o fundo e recortado (PNG), pra prévia no painel e no editor."""
+    f = rules.lower_file(key)
+    if not f:
+        raise HTTPException(404, "Ainda não tem Lower pra esse canal")
+    out = rules.LOWERS_DIR / f"_previa_{key}.png"
+    if not out.exists() or out.stat().st_mtime < f.stat().st_mtime:
+        render.lower_preview_png(f, out)
+    return FileResponse(out, headers={"Cache-Control": "max-age=3600"})
+
+
 @app.post("/api/rules/{key}/lower")
 async def upload_lower(key: str, request: Request):
     """Recebe o arquivo do Lower (imagem PNG/JPG ou vídeo MP4/MOV/WEBM) enviado pelo painel."""
