@@ -20,6 +20,7 @@ import numpy as np
 
 from . import config as C
 from . import db, meta, render, rules, settings, sources, transcribe
+from .procs import safe_unlink
 from .chat import TwitchChat
 
 log = logging.getLogger("recorder")
@@ -90,7 +91,8 @@ class ChannelWorker(threading.Thread):
         self.url = ch["url"]
         self.name = ch["name"]
         self.platform = ch["platform"]
-        self.segdir = C.SEGMENTS_DIR / str(self.id)
+        self.basedir = C.SEGMENTS_DIR / str(self.id)
+        self.segdir = self.basedir
         self.status = "iniciando"
         self.live_since = None
         self.error = ""
@@ -192,9 +194,15 @@ class ChannelWorker(threading.Thread):
 
     def _record(self, src):
         self._reset_state()
+        # cada gravação numa pasta nova: se sobrou arquivo preso de antes, não atrapalha
+        self.basedir.mkdir(parents=True, exist_ok=True)
+        for old in list(self.basedir.iterdir()):
+            if old.is_dir():
+                shutil.rmtree(old, ignore_errors=True)
+            else:
+                safe_unlink(old)
+        self.segdir = self.basedir / f"g{int(time.time())}"
         self.segdir.mkdir(parents=True, exist_ok=True)
-        for f in self.segdir.glob("*.ts"):
-            f.unlink(missing_ok=True)
         out = ["-map", "0:v:0", "-map", "0:a:0?", "-c", "copy",
                "-f", "segment", "-segment_time", str(C.SEGMENT_SECONDS),
                "-reset_timestamps", "1", "-strftime", "1", str(self.segdir / "%Y%m%d%H%M%S.ts")]
@@ -236,7 +244,7 @@ class ChannelWorker(threading.Thread):
             logf.close()
             self._tick(final=True)
             for f in self.segdir.glob("*.ts"):
-                f.unlink(missing_ok=True)
+                safe_unlink(f)
             if self.chat:
                 self.chat.stop()
             self.live_since = None
@@ -374,14 +382,14 @@ class ChannelWorker(threading.Thread):
         finally:
             lst.unlink(missing_ok=True)
             for _, p in segs:
-                Path(p).unlink(missing_ok=True)
+                safe_unlink(p)
 
     def _cleanup(self):
         limit = time.time() - C.BUFFER_MINUTES * 60
         keep = []
         for s, p, d in self.segments:
             if s + d < limit:
-                p.unlink(missing_ok=True)
+                safe_unlink(p)
                 self.analyzed.discard(p)
             else:
                 keep.append((s, p, d))

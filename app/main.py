@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from . import config as C
 import urllib.parse
 
-from . import db, drive, meta, render, rules, settings, sources, version, vod
+from . import db, drive, meta, procs, render, rules, settings, sources, version, vod
 from .recorder import CLIP_POOL, ChannelWorker, render_vertical_for
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(message)s", datefmt="%H:%M:%S")
@@ -45,6 +45,7 @@ def start_worker(ch):
 
 @asynccontextmanager
 async def lifespan(app):
+    procs.tie_children_to_me()   # gravadores fecham junto com o programa (Windows)
     db.execute("UPDATE clips SET rendering=0 WHERE rendering=1")
     # cortes de versões antigas: o texto que está no vídeo é o texto salvo
     db.execute("UPDATE clips SET overlay_applied=COALESCE(overlay,'') WHERE overlay_applied IS NULL")
@@ -568,7 +569,7 @@ def cleanup(body: CleanupIn):
         busy = {w.id for w in workers.values() if w.status == "gravando"}
         for d in C.SEGMENTS_DIR.iterdir() if C.SEGMENTS_DIR.exists() else []:
             if d.is_dir() and not (d.name.isdigit() and int(d.name) in busy):
-                for f in d.glob("*.ts"):
+                for f in d.rglob("*.ts"):
                     try:
                         freed += f.stat().st_size
                         f.unlink()
