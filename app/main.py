@@ -215,10 +215,16 @@ def edit_clip(clip_id: int, body: ClipIn):
 @app.post("/api/clips/{clip_id}/newtitle")
 def new_title(clip_id: int):
     c = _clip(clip_id)
-    titles = meta.title_list(c["cat"] or "geral", c["channel_name"], c["subject"])
-    idx = ((c["title_idx"] or 0) + 1) % len(titles)
-    db.update("clips", clip_id, {"title": titles[idx], "title_idx": idx})
-    return {"title": titles[idx]}
+    import re as _re
+    gain = max([float(x) for x in _re.findall(r"áudio \+(\d+) dB", c["reasons"] or "")] or [0])
+    titles = meta.title_list(c["cat"] or "geral", c["channel_name"], c["subject"], gain)
+    n_subject = (len(meta.title_list(c["cat"] or "geral", c["channel_name"], c["subject"]))
+                 - len(meta.title_list(c["cat"] or "geral", c["channel_name"], None))) if c["subject"] else 0
+    recent = [r["title"] for r in db.query("SELECT title FROM clips WHERE channel_name=? AND id<>? ORDER BY created_at DESC LIMIT 60",
+                                           (c["channel_name"], clip_id))]
+    title = meta.pick_title(titles, max(0, n_subject), recent, current=c["title"])
+    db.update("clips", clip_id, {"title": title, "title_idx": titles.index(title)})
+    return {"title": title}
 
 
 @app.post("/api/clips/{clip_id}/rerender")

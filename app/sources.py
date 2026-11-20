@@ -41,8 +41,16 @@ def parse_link(url: str):
     return url, (parts[-1] if parts else host), "outro", "vod"
 
 
+class _Quiet:
+    """Não imprime nada na janela preta (canal offline não é erro)."""
+    def debug(self, msg): pass
+    def info(self, msg): pass
+    def warning(self, msg): pass
+    def error(self, msg): log.debug(msg)
+
+
 def _ydl(fmt):
-    return yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "format": fmt, "noplaylist": True})
+    return yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "format": fmt, "noplaylist": True, "logger": _Quiet()})
 
 
 def ffmpeg_inputs(info):

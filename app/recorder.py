@@ -334,7 +334,9 @@ class ChannelWorker(threading.Thread):
             render.make_horizontal(["-f", "concat", "-safe", "0", "-i", str(lst)], h,
                                    start - segs[0][0], job["end"] - start)
             cam = (db.query("SELECT cam FROM channels WHERE id=?", (self.id,)) or [{}])[0].get("cam")
-            m = meta.make_meta(self.name, self.platform, self.url, lines)
+            recent = [r["title"] for r in db.query("SELECT title FROM clips WHERE channel_name=? ORDER BY created_at DESC LIMIT 60", (self.name,))]
+            gain = max([float(x) for x in __import__("re").findall(r"áudio \+(\d+) dB", " ".join(job["reasons"]))] or [0])
+            m = meta.make_meta(self.name, self.platform, self.url, lines, gain=gain, avoid=recent)
             clip_id = db.insert("clips", {
                 "channel_id": self.id, "channel_name": self.name, "peak_time": job["peak"],
                 "created_at": time.time(), "score": round(min(job["score"], 10.0), 1),

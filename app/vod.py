@@ -131,7 +131,8 @@ def _process(vod_id):
         maps = ["-map", "0:v:0", "-map", f"{1 if len(inputs) > 1 else 0}:a:0?"]
         render.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", *args, "-t", f"{dur:.2f}", *maps,
                     *render.venc(), *render.AENC, "-movflags", "+faststart", str(h)], timeout=1800)
-        m = meta.make_meta(name, v["platform"], channel_url, [])
+        recent = [r["title"] for r in db.query("SELECT title FROM clips WHERE channel_name=? ORDER BY created_at DESC LIMIT 60", (name,))]
+        m = meta.make_meta(name, v["platform"], channel_url, [], gain=gain, avoid=recent)
         clip_id = db.insert("clips", {
             "channel_id": 0, "channel_name": name, "peak_time": time.time(), "created_at": time.time(),
             "score": round(min(score, 10.0), 1),

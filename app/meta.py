@@ -1,4 +1,5 @@
 """Título, descrição e hashtags de cada corte, a partir do que o chat escreveu."""
+import random
 import re
 import unicodedata
 from collections import Counter
@@ -9,22 +10,44 @@ from . import settings
 CATS = {
     "policia": dict(re=r"(pol[ií]cia|persegui[çc][aã]o|fuga|fugiu|estrelas?|procurado|swat|viatura|cops|preso|pris[aã]o)",
                     lead="Perseguição insana", tags=["#perseguicao", "#policia", "#fuga"],
-                    titles=["A FUGA MAIS INSANA DO {N} NO GTA 6 🚓", "{N} VS A POLÍCIA INTEIRA 🚨", "5 ESTRELAS: {N} ENLOUQUECEU NO GTA 6 🚓"]),
+                    titles=["A FUGA MAIS INSANA DO {N} NO GTA 6 🚓", "{N} VS A POLÍCIA INTEIRA 🚨", "5 ESTRELAS: {N} ENLOUQUECEU NO GTA 6 🚓",
+                            "A POLÍCIA DO GTA 6 NÃO DEU PAZ PRO {N} 🚨", "{N} FUGINDO DA POLÍCIA IGUAL FILME 🎬", "NINGUÉM SEGURA O {N} NO GTA 6 🚓",
+                            "O {N} VIROU O MAIS PROCURADO DE LEONIDA 🚨", "PERSEGUIÇÃO ABSURDA COM O {N} 🚓"]),
     "fail": dict(re=r"(^f+$|^f\s|\brip\b|morreu|morre|wasted|noob|^-1|perdeu tudo|que burro|burr[oa]|errou|eliminad)",
                  lead="O fail", tags=["#fail", "#gtafail", "#wasted"],
-                 titles=["{N} MORREU DO JEITO MAIS BURRO 💀", "F NO CHAT PRO {N} 😭 GTA 6", "{N} PERDEU TUDO EM 1 SEGUNDO 💀"]),
+                 titles=["{N} MORREU DO JEITO MAIS BURRO 💀", "F NO CHAT PRO {N} 😭 GTA 6", "{N} PERDEU TUDO EM 1 SEGUNDO 💀",
+                         "O MAIOR FAIL DO {N} NO GTA 6 😭", "WASTED: O {N} NÃO ACREDITOU 💀", "ERA SÓ NÃO FAZER ISSO, {N} 😭",
+                         "O {N} SE SABOTOU NO GTA 6 💀", "DEU TUDO ERRADO PRO {N} 😂", "O {N} TINHA TUDO PRA DAR CERTO... 💀"]),
     "epico": dict(re=r"(pog|insan[oa]|brab[oa]|monstro|absurd[oa]|\bclip|clipa|🔥|que isso|goat|lenda|\bgg\b|mito|jogou muito)",
                   lead="Jogada insana", tags=["#insano", "#epico", "#jogadaincrivel"],
-                  titles=["{N} FEZ O IMPOSSÍVEL NO GTA 6 🔥", "JOGADA INSANA DO {N} NO GTA 6 😱", "O CHAT PEDIU CLIP: {N} FOI BRABO 🔥"]),
+                  titles=["{N} FEZ O IMPOSSÍVEL NO GTA 6 🔥", "JOGADA INSANA DO {N} NO GTA 6 😱", "O CHAT PEDIU CLIP: {N} FOI BRABO 🔥",
+                          "O {N} JOGA MUITO, OLHA ISSO 🔥", "ISSO FOI DE OUTRO NÍVEL, {N} 🐐", "O {N} ACERTOU A MAIS DIFÍCIL DO GTA 6",
+                          "NINGUÉM FAZ ISSO IGUAL O {N} 🔥", "O {N} DEU AULA DE GTA 6 📚", "MOMENTO LENDÁRIO DO {N} NO GTA VI 🏆"]),
     "susto": dict(re=r"(wtf|monka|caralho|\bmds\b|meu deus|nossa|\boq\b|o que foi|\?\?\?|😱|susto|medo|jumpscare)",
                   lead="A reação", tags=["#susto", "#reacao", "#wtf"],
-                  titles=["{N} TOMOU O SUSTO DA VIDA 😱", "O QUE ACONTECEU AQUI, {N}?! 😳", "A REAÇÃO DO {N} FOI SURREAL 😳"]),
+                  titles=["{N} TOMOU O SUSTO DA VIDA 😱", "O QUE ACONTECEU AQUI, {N}?! 😳", "A REAÇÃO DO {N} FOI SURREAL 😳",
+                          "O {N} PULOU DA CADEIRA 😱", "NINGUÉM ESPERAVA ISSO, NEM O {N} 😳", "O GTA 6 ASSUSTOU O {N} 😱",
+                          "O {N} FICOU SEM PALAVRAS 😶", "ISSO DEU MEDO ATÉ NO {N} 😨"]),
     "engracado": dict(re=r"(k{3,}|ha(ha)+|rs(rs)+|\blul\b|kekw|omegalul|icant|😂|🤣|💀|lmao)",
                       lead="Momento hilário", tags=["#humor", "#engracado", "#comedia"],
-                      titles=["{N} NÃO AGUENTOU 😂 GTA 6", "O CHAT CHOROU DE RIR COM {N} 😂", "NINGUÉM ESPERAVA ISSO DO {N} 💀"]),
+                      titles=["{N} NÃO AGUENTOU 😂 GTA 6", "O CHAT CHOROU DE RIR COM {N} 😂", "NINGUÉM ESPERAVA ISSO DO {N} 💀",
+                              "O {N} PASSOU VERGONHA NO GTA 6 🤣", "ISSO SÓ ACONTECE COM O {N} 😂", "O {N} CHOROU DE RIR AQUI 🤣",
+                              "MOMENTO MAIS ENGRAÇADO DA LIVE DO {N} 😂", "O GTA 6 ZOOU O {N} KKKKKKK", "O {N} NÃO SABIA SE RIA OU CHORAVA 😂"]),
     "geral": dict(re=None, lead="Melhor momento", tags=["#reacao", "#momentos"],
-                  titles=["{N} PERDEU A CABEÇA NO GTA 6 🤯", "O MOMENTO MAIS INSANO DA LIVE DO {N}", "OLHA O QUE O {N} FEZ NO GTA 6 👀"]),
+                  titles=["{N} PERDEU A CABEÇA NO GTA 6 🤯", "O MOMENTO MAIS INSANO DA LIVE DO {N}", "OLHA O QUE O {N} FEZ NO GTA 6 👀",
+                          "O {N} NÃO ESPERAVA POR ISSO NO GTA VI 😳", "NINGUÉM ESTAVA PREPARADO PRA ISSO ({N}) 😳",
+                          "OLHA O QUE ACONTECEU COM O {N} NO GTA 6 👀", "ISSO SÓ ACONTECE NA LIVE DO {N} 😂", "{N} SURTOU AO VIVO NO GTA 6 😱",
+                          "O GTA 6 TROLLOU O {N} 💀", "O {N} NÃO ACREDITOU NO QUE VIU NO GTA VI", "A REAÇÃO DO {N} FOI TUDO 😂",
+                          "O MOMENTO MAIS ALEATÓRIO DA LIVE DO {N}", "O {N} DESCOBRIU ISSO NO GTA 6 E SURTOU 🤯", "{N} PASSOU DO LIMITE NO GTA VI 💀",
+                          "QUANDO O GTA 6 RESOLVE ZOAR O {N} 😂", "NINGUÉM ENTENDEU NADA NA LIVE DO {N} 😂", "O {N} VIVENDO O CAOS NO GTA 6 🔥",
+                          "ATÉ O {N} FICOU CHOCADO COM O GTA 6", "O GTA 6 NÃO PERDOA NINGUÉM, NEM O {N} 💀", "SÓ O {N} PRA FAZER ISSO NO GTA VI 😂",
+                          "O {N} ESTAVA TRANQUILO ATÉ QUE... 😳", "ESSE É O GTA 6 QUE O {N} CONHECE 😂", "{N} TESTOU OS LIMITES DO GTA 6",
+                          "O DIA QUE O {N} QUEBROU O GTA 6 🤯", "VOCÊ NÃO VAI ACREDITAR NO QUE O {N} FEZ 😳", "O {N} E O GTA 6: UMA HISTÓRIA DE CAOS 😂"]),
 }
+# quando o áudio explode muito (grito, risada alta)
+LOUD = ["O GRITO DO {N} NO GTA 6 😂", "O {N} QUASE QUEBROU O MICROFONE 😱", "{N} GRITOU TANTO QUE O CHAT ASSUSTOU 😂",
+        "NUNCA VI O {N} GRITAR ASSIM 😱", "O {N} PERDEU O CONTROLE AQUI 🤯", "ESSE GRITO DO {N} FOI REAL 😂",
+        "ABAIXA O VOLUME: O {N} SURTOU 🔊", "O {N} ESTOUROU O ÁUDIO DA LIVE 😂"]
 _RE = {k: re.compile(v["re"], re.I) for k, v in CATS.items() if v["re"]}
 
 # Coisas do GTA que o chat costuma citar: (artigo, o que o streamer "foi fazer")
@@ -75,7 +98,8 @@ def find_subject(lines):
     return None
 
 
-def title_list(cat, name, subject):
+def title_list(cat, name, subject, gain=0):
+    """Todos os títulos possíveis pra esse corte. Os ligados ao assunto da cena vêm primeiro."""
     N = name.upper()
     C = CATS.get(cat, CATS["geral"])
     ends = ENDINGS.get(cat, ENDINGS["geral"])
@@ -83,7 +107,10 @@ def title_list(cat, name, subject):
     if subject:
         art, act = THINGS[subject]
         de = re.sub(r"^O ", "DO ", re.sub(r"^A ", "DA ", art))
-        out += [f"{N} FOI {act} NO GTA VI {ends[0]}", f"{N} FOI {act} NO GTA VI {ends[1]}"]
+        emo = EMO.get(cat, "😳")
+        out += [f"{N} FOI {act} NO GTA VI {e}" for e in ends]
+        out += [f"{N} TENTOU {act} E OLHA NO QUE DEU {emo}", f"QUANDO O {N} RESOLVEU {act}... {emo}",
+                f"NUNCA DEIXE O {N} {act} NO GTA 6 💀", f"O {N} SÓ QUERIA {act} 😭", f"{art} NO GTA 6 E O {N} 😂"]
         extra = {
             "engracado": [f"{art} ACABOU COM O {N} KKKKKKKK", f"{N} E {art}: NINGUÉM ESPERAVA ISSO 😂"],
             "fail": [f"{N} MORREU POR CAUSA {de} 💀", f"{art} DESTRUIU O {N} 💀"],
@@ -92,9 +119,21 @@ def title_list(cat, name, subject):
             "geral": [f"OLHA {art} QUE O {N} ACHOU NO GTA VI 👀"],
         }
         out += extra.get(cat, [])
-    else:
-        out.append(f"O {N} NÃO ESPERAVA POR ISSO NO GTA VI {EMO.get(cat, '😳')}")
-    return out + [t.replace("{N}", N) for t in C["titles"]]
+    general = [t.replace("{N}", N) for t in C["titles"]]
+    if gain >= 18:
+        general = [t.replace("{N}", N) for t in LOUD] + general
+    if cat != "geral":
+        general += [t.replace("{N}", N) for t in CATS["geral"]["titles"]]
+    return out + [t for t in general if t not in out]
+
+
+def pick_title(titles, n_subject, avoid=(), current=None):
+    """Escolhe um título ainda não usado (de preferência ligado à cena), sorteando entre os que sobraram."""
+    avoid = set(avoid) | ({current} if current else set())
+    fresh_subject = [t for t in titles[:n_subject] if t not in avoid]
+    fresh = [t for t in titles if t not in avoid]
+    pool = fresh_subject or fresh or [t for t in titles if t != current] or titles
+    return random.choice(pool)
 
 
 def top_message(lines):
@@ -114,7 +153,7 @@ def top_message(lines):
     return first[best]
 
 
-def make_meta(channel, platform, url, lines=(), manual=False):
+def make_meta(channel, platform, url, lines=(), manual=False, gain=0, avoid=()):
     lines = list(lines)
     cat, best = "geral", 1
     for k, rx in _RE.items():
@@ -122,8 +161,9 @@ def make_meta(channel, platform, url, lines=(), manual=False):
         if n > best:
             cat, best = k, n
     subject = find_subject(lines)
-    titles = title_list(cat, channel, subject)
-    title = titles[0]
+    titles = title_list(cat, channel, subject, gain)
+    n_subject = len(title_list(cat, channel, subject)) - len(title_list(cat, channel, None)) if subject else 0
+    title = pick_title(titles, max(0, n_subject), avoid)
     chat_top = top_message(lines)
     Nn = channel[:1].upper() + channel[1:]
     plat = PLAT.get(platform, "live")
@@ -138,7 +178,7 @@ def make_meta(channel, platform, url, lines=(), manual=False):
         if t not in tags:
             tags.append(t)
     return {
-        "cat": cat, "subject": subject, "title": title, "title_idx": 0, "descr": desc,
+        "cat": cat, "subject": subject, "title": title, "title_idx": titles.index(title), "descr": desc,
         "tags": " ".join(tags), "chat_top": chat_top,
         "overlay": title if settings.get("ov_on") else "",
     }
