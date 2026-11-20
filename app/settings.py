@@ -12,6 +12,7 @@ DEFAULTS = {
     "ov_secs": 10,                     # por quantos segundos (41 = vídeo todo)
     "tags": "#gta6 #gtavi #gta #gta6brasil #cortes #cortesdelive #fyp #viral",
     "vod_max": 15,                     # máximo de cortes por VOD
+    "posted_cleanup": True,            # ao marcar "postado", apaga os vídeos pra liberar espaço
     "audio_mode": "auto",              # auto: só mexe se estiver muito baixo ou estourando · off: nunca mexe
 }
 _lock = threading.Lock()

@@ -182,11 +182,23 @@ details.meta[open] summary{margin-bottom:6px}
     <label>Duração do corte <input type="range" id="dur" min="20" max="90" step="5"><output></output></label>
     <label>Máx. cortes por VOD <input type="range" id="vod_max" min="3" max="40" step="1"><output></output></label>
     <label><input type="checkbox" id="ov_on"> Título dentro do vídeo</label>
+    <label><input type="checkbox" id="posted_cleanup"> Apagar o vídeo quando marcar como postado</label>
     <label>Texto aparece por <input type="range" id="ov_secs" min="3" max="41" step="1"><output></output></label>
     <label>Volume do áudio <select id="audio_mode"><option value="auto">Automático (só mexe se estiver muito baixo ou estourando)</option><option value="off">Original da live (nunca mexer)</option></select></label>
     <label class="wide">Hashtags padrão <input type="text" id="tags"></label>
   </div>
   <p class="muted">Muito corte ruim? Aumente a nota mínima. Poucos cortes? Diminua.</p>
+
+  <h2>🧹 Espaço no computador</h2>
+  <div class="settings" id="storage" style="flex-direction:column;align-items:stretch;gap:10px">
+    <div id="stInfo" class="muted">Calculando…</div>
+    <div class="actions">
+      <button class="small" data-clean="postados">Apagar vídeos dos já postados</button>
+      <button class="small" data-clean="novos_antigos">Apagar cortes novos não aprovados com mais de 3 dias</button>
+      <button class="small" data-clean="lixo">Apagar arquivos esquecidos (sobras e temporários)</button>
+      <button class="small" id="stRefresh">↻ Atualizar</button>
+    </div>
+  </div>
 
   <h2>Cortes</h2>
   <div class="toolbar">
@@ -417,7 +429,7 @@ let settingsBound = false, saveSet = null;
 function bindSettings(){
   if (settingsBound) return; settingsBound = true;
   const fmt = { min_score: v => (+v).toFixed(1), dur: v => `${v}s (${Math.round(v * 2 / 3)}s antes do momento, ${v - Math.round(v * 2 / 3)}s depois)`, vod_max: v => v, ov_secs: v => +v > 40 ? "o vídeo todo" : v + "s" };
-  for (const id of ["min_score", "dur", "vod_max", "ov_secs", "ov_on", "tags", "audio_mode"]){
+  for (const id of ["min_score", "dur", "vod_max", "ov_secs", "ov_on", "tags", "audio_mode", "posted_cleanup"]){
     const el = $("#" + id), out = el.parentElement.querySelector("output"), val = ST.settings[id];
     if (el.type === "checkbox") el.checked = !!val; else el.value = val;
     if (out) out.textContent = fmt[id](val);
@@ -433,10 +445,10 @@ function bindSettings(){
 /* ------------------------------------------------------------ cortes */
 const openMeta = new Set();
 const dirty = new Map();   // edições ainda não salvas (não podem ser apagadas pelo painel se atualizando)
-let confirmDel = null, clipsKey = "";
+let confirmDel = null, confirmPost = null, clipsKey = "";
 function renderClips(force){
   const el = $("#clips");
-  const key = JSON.stringify([confirmDel, clips.map(c => [c.id, c.rendering, c.status, c.created_at, c.title, c.warn, c.overlay_applied, c.yt_tags])]);
+  const key = JSON.stringify([confirmDel, confirmPost, clips.map(c => [c.id, c.rendering, c.status, c.created_at, c.title, c.warn, c.overlay_applied, c.yt_tags, c.files_deleted])]);
   if (!force && key === clipsKey) return;
   if (!force && el.contains(document.activeElement) && /INPUT|TEXTAREA/.test(document.activeElement.tagName)) return;
   if (!force && [...el.querySelectorAll("video")].some(v => !v.paused)) return;
@@ -445,7 +457,9 @@ function renderClips(force){
   el.innerHTML = clips.map(c => {
     const v = `?v=${Math.round(c.created_at)}`, id = c.id;
     const when = c.source === "vod" ? "VOD" : new Date(c.peak_time * 1000).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-    const media = c.rendering ? `<div class="ph">Montando o vídeo vertical…<br>em qualidade original</div>`
+    const gone = !!c.files_deleted;
+    const media = gone ? `<div class="ph" ${c.thumb ? `style="background:#000 url('/media/${c.thumb}${v}') center/cover;"` : ""}><span style="background:rgba(0,0,0,.75);padding:10px 12px;border-radius:10px">✅ Já postado<br>O vídeo foi apagado pra liberar espaço.<br>Título, descrição e tags continuam aqui.</span></div>`
+      : c.rendering ? `<div class="ph">Montando o vídeo vertical…<br>em qualidade original</div>`
       : `<video src="/media/${c.file_v}${v}" ${c.thumb ? `poster="/media/${c.thumb}${v}"` : ""} controls preload="none" playsinline></video>`;
     return `<div class="clip">${media}<div class="body">
       <div class="row between"><b>${esc(c.channel_name)}</b><span class="score ${c.score >= 8 ? "hi" : ""}">${c.score}</span></div>
@@ -458,7 +472,7 @@ function renderClips(force){
       ${c.warn ? `<div class="warn">⚠ ${esc(c.warn)}</div>` : ""}
       ${c.chat_top ? `<div class="chatq">💬 "${esc(c.chat_top)}"</div>` : ""}
       ${c.rendering ? "" : `
-      <div class="ovedit ${ovOn(c) ? "" : "off"}" id="ove${id}">
+      ${gone ? "" : `<div class="ovedit ${ovOn(c) ? "" : "off"}" id="ove${id}">
         <label class="switch"><input type="checkbox" data-ovon="${id}" ${ovOn(c) ? "checked" : ""}> Texto no vídeo</label>
         <div class="ovrow">
           <canvas class="ovprev" id="pv${id}" data-id="${id}" width="270" height="480" aria-label="Prévia do vídeo com o texto"></canvas>
@@ -472,7 +486,7 @@ function renderClips(force){
         </div>
         <button class="small primary" data-c="ovl" data-id="${id}">🎬 Aplicar no vídeo</button>
         <div class="ovst" id="ovst${id}"></div>
-      </div>
+      </div>`}
       <div class="yttags">
         <span class="lbl">🏷 Tags pro YouTube (campo "Tags" do YouTube Studio)</span>
         <div class="tagchips" id="yt${id}">${(c.yt_tags || "").split(",").map(t => t.trim()).filter(Boolean).map(t => `<span>${esc(t)}</span>`).join("") || `<span>sem tags ainda: clique em 🔄 Gerar tags</span>`}</div>
@@ -492,12 +506,12 @@ function renderClips(force){
         </div>
       </details>
       <div class="actions">
-        <button class="small primary" data-c="edit" data-id="${id}">✂ Editar corte</button>
+        ${gone ? "" : `<button class="small primary" data-c="edit" data-id="${id}">✂ Editar corte</button>
         <a class="btn small" href="/media/${c.file_v}${v}" download>⬇ Vertical</a>
         <a class="btn small" href="/media/${c.file_hw || c.file_h}" download>⬇ Horizontal</a>
-        <button class="small" data-c="cam" data-id="${id}">📐 Formato / câmera</button>
+        <button class="small" data-c="cam" data-id="${id}">📐 Formato / câmera</button>`}
         ${c.status !== "aprovado" ? `<button class="small" data-c="aprovado" data-id="${id}">✔ Aprovar</button>` : ""}
-        ${c.status !== "postado" ? `<button class="small" data-c="postado" data-id="${id}">📤 Postado</button>` : ""}
+        ${c.status !== "postado" ? `<button class="small" data-c="postado" data-id="${id}">${confirmPost === id ? "Confirmar? (apaga o vídeo)" : "📤 Postado"}</button>` : ""}
         <button class="small danger" data-c="del" data-id="${id}">${confirmDel === id ? "Confirmar?" : "🗑"}</button>
       </div>`}
     </div></div>`;
@@ -518,6 +532,25 @@ function showOldServer(){
     2) Abra o <b>INICIAR.bat</b> da pasta <b>cortes-ao-vivo</b> (só um).<br>
     3) Recarregue esta página. No topo, à direita, tem que aparecer "Versão …".`;
 }
+const mb = b => b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : `${Math.round(b / 1e6)} MB`;
+async function loadStorage(){
+  try {
+    const s = await api("/api/storage");
+    $("#stInfo").innerHTML = `Os dados do programa ocupam <b style="color:var(--text)">${mb(s.total)}</b> · livre no disco: <b style="color:var(--text)">${mb(s.disk_free)}</b><br>
+      Cortes novos: ${s.count.pendente} (${mb(s.cortes.pendente)}) · aprovados: ${s.count.aprovado} (${mb(s.cortes.aprovado)}) ·
+      postados: ${s.count.postado} (${mb(s.cortes.postado)}) · gravações em andamento: ${mb(s.gravacoes)} · sobras: ${mb(s.outros_cortes)}`;
+  } catch { $("#stInfo").textContent = "Não deu pra calcular o espaço agora."; }
+}
+$("#storage").addEventListener("click", async e => {
+  const b = e.target.closest("button[data-clean]"); if (!b) return;
+  if (b.dataset.sure !== "1"){ const t = b.textContent; b.dataset.sure = "1"; b.dataset.t = t; b.textContent = "Clique de novo pra confirmar";
+    setTimeout(() => { b.dataset.sure = ""; b.textContent = b.dataset.t; }, 5000); return; }
+  b.dataset.sure = ""; b.textContent = b.dataset.t;
+  try { const r = await post("/api/cleanup", { what: b.dataset.clean, days: 3 }); toast(`Pronto: ${r.freed_mb} MB liberados.`); loadStorage(); loadClips(true); }
+  catch (err) { toast(err.message); }
+});
+$("#stRefresh").onclick = loadStorage;
+
 async function loadState(){ ST = await api("/api/state"); bindSettings(); renderLives(); renderActivity(); }
 async function loadClips(force){
   const fresh = await api(`/api/clips?status=${filt.status}&channel=${encodeURIComponent(filt.channel)}`);
@@ -588,7 +621,8 @@ const frameObs = new IntersectionObserver(entries => {
     const id = +e.target.dataset.id; frameObs.unobserve(e.target);
     if (frames.has(id)){ drawPreview(id); continue; }
     fetch(`/api/clips/${id}/frame?t=1.5`).then(r => r.ok ? r.blob() : null).then(b => b && createImageBitmap(b))
-      .then(bmp => { if (bmp){ frames.set(id, bmp); drawPreview(id); } }).catch(() => {});
+      .then(bmp => { if (bmp){ frames.set(id, bmp); drawPreview(id);
+        while (frames.size > 30){ const k = frames.keys().next().value; frames.get(k)?.close?.(); frames.delete(k); } } }).catch(() => {});
   }
 }, { rootMargin: "200px" });
 function hookPreviews(){ document.querySelectorAll("canvas.ovprev").forEach(cv => { drawPreview(+cv.dataset.id); frameObs.observe(cv); }); }
@@ -770,7 +804,15 @@ $("#clips").addEventListener("click", async e => {
       c.rendering = 1; renderClips(true); return;
     }
     if (a === "cam") return openCam({ kind: "clip", id, name: c.channel_name, cam: c.cam, overlay: c.overlay, layout: c.layout || "auto", layoutUsed: c.layout_used });
-    if (a === "aprovado" || a === "postado"){ await post(`/api/clips/${id}`, { status: a }); }
+    if (a === "postado" && ST.settings.posted_cleanup && confirmPost !== id){
+      confirmPost = id; renderClips(true);
+      toast("Clique de novo pra confirmar. O vídeo vai ser apagado pra liberar espaço (baixe antes se ainda não baixou).", 6000);
+      setTimeout(() => { if (confirmPost === id){ confirmPost = null; renderClips(true); } }, 6000); return;
+    }
+    if (a === "aprovado" || a === "postado"){
+      confirmPost = null; const r = await post(`/api/clips/${id}`, { status: a });
+      if (r.freed_mb) toast(`Marcado como postado. ${r.freed_mb} MB liberados.`); loadStorage();
+    }
     if (a === "del"){
       if (confirmDel !== id){ confirmDel = id; renderClips(true); setTimeout(() => { if (confirmDel === id){ confirmDel = null; renderClips(true); } }, 4000); return; }
       confirmDel = null; await api(`/api/clips/${id}`, { method: "DELETE" });
@@ -872,7 +914,7 @@ window.addEventListener("error", e => toast(`⚠ Erro no painel: ${e.message}. T
 window.addEventListener("unhandledrejection", e => toast(`⚠ Erro no painel: ${e.reason?.message || e.reason}. Tire um print e mande pro Claude.`, 12000));
 
 /* ------------------------------------------------------------ início */
-loadState().then(() => loadClips(true)).catch(e => toast("Não conectou no programa: " + e.message, 8000));
+loadState().then(() => { loadClips(true); loadStorage(); }).catch(e => toast("Não conectou no programa: " + e.message, 8000));
 setInterval(() => loadState().catch(() => {}), 3000);
 setInterval(() => loadClips().catch(() => {}), 5000);
 </script>

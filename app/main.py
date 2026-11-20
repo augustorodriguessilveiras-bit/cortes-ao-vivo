@@ -220,11 +220,18 @@ def _clip(clip_id):
 
 @app.post("/api/clips/{clip_id}")
 def edit_clip(clip_id: int, body: ClipIn):
-    _clip(clip_id)
+    c = _clip(clip_id)
     data = {k: v for k, v in body.model_dump().items() if v is not None}
+    freed = 0
+    if data.get("status"):
+        data["status_at"] = time.time()
+        if data["status"] == "postado" and settings.get("posted_cleanup") and not c.get("files_deleted"):
+            freed = _free_files(c, keep_thumb=True)      # já foi postado: libera o espaço do vídeo
+            data["files_deleted"] = 1
+            plog.info("📤 %s: marcado como postado; vídeo apagado (%s MB liberados)", c["channel_name"], round(freed / 1e6))
     if data:
         db.update("clips", clip_id, data)
-    return {"ok": True}
+    return {"ok": True, "freed_mb": round(freed / 1e6, 1)}
 
 
 @app.post("/api/clips/{clip_id}/newtitle")
@@ -437,15 +444,128 @@ def clip_frame(clip_id: int, t: float = 10):
     return FileResponse(out, headers={"Cache-Control": "no-store"})
 
 
+def _clip_files(c):
+    files = [C.CLIPS_DIR / c[k] for k in ("file_h", "file_v", "file_hw", "thumb") if c.get(k)]
+    if c.get("file_h"):
+        h = C.CLIPS_DIR / c["file_h"]
+        files += [h.with_name(h.name.replace("_h.mp4", s)) for s in ("_v.mp4", "_hw.mp4", ".jpg", ".srt", "_v.novo.mp4")]
+    files.append(C.DATA_DIR / f"quadro_corte_{c['id']}.jpg")
+    return list(dict.fromkeys(files))   # sem repetir (não conta nem apaga o mesmo arquivo duas vezes)
+
+
+def _free_files(c, keep_thumb=False):
+    """Apaga os arquivos de vídeo do corte. Retorna quantos bytes liberou."""
+    freed = 0
+    for f in _clip_files(c):
+        if keep_thumb and c.get("thumb") and f == C.CLIPS_DIR / c["thumb"]:
+            continue
+        try:
+            if f.exists():
+                freed += f.stat().st_size
+                f.unlink()
+        except OSError:
+            pass
+    return freed
+
+
 @app.delete("/api/clips/{clip_id}")
 def delete_clip(clip_id: int):
     rows = db.query("SELECT * FROM clips WHERE id=?", (clip_id,))
     if rows:
-        for k in ("file_h", "file_v", "thumb"):
-            if rows[0][k]:
-                (C.CLIPS_DIR / rows[0][k]).unlink(missing_ok=True)
+        _free_files(rows[0])
         db.execute("DELETE FROM clips WHERE id=?", (clip_id,))
     return {"ok": True}
+
+
+# ------------------------------------------------------------ espaço no computador
+def _size(path):
+    total = 0
+    for f in Path(path).rglob("*"):
+        try:
+            if f.is_file():
+                total += f.stat().st_size
+        except OSError:
+            pass
+    return total
+
+
+@app.get("/api/storage")
+def storage():
+    by = {"pendente": 0, "aprovado": 0, "postado": 0}
+    count = {"pendente": 0, "aprovado": 0, "postado": 0}
+    for c in db.query("SELECT * FROM clips"):
+        st = c["status"] if c["status"] in by else "pendente"
+        count[st] += 1
+        for f in _clip_files(c):
+            try:
+                if f.exists():
+                    by[st] += f.stat().st_size
+            except OSError:
+                pass
+    known = sum(by.values())
+    cortes = _size(C.CLIPS_DIR)
+    disk = shutil.disk_usage(C.DATA_DIR)
+    return {"cortes": by, "count": count, "outros_cortes": max(0, cortes - known),
+            "gravacoes": _size(C.SEGMENTS_DIR), "modelo_lowers": _size(rules.LOWERS_DIR),
+            "total": _size(C.DATA_DIR) + (_size(C.SEGMENTS_DIR) if not str(C.SEGMENTS_DIR).startswith(str(C.DATA_DIR)) else 0),
+            "disk_free": disk.free}
+
+
+class CleanupIn(BaseModel):
+    what: str
+    days: int = 3
+
+
+@app.post("/api/cleanup")
+def cleanup(body: CleanupIn):
+    """Libera espaço: vídeos dos postados, novos não aprovados antigos ou arquivos esquecidos."""
+    freed, n = 0, 0
+    if body.what == "postados":
+        for c in db.query("SELECT * FROM clips WHERE status='postado' AND COALESCE(files_deleted,0)=0"):
+            freed += _free_files(c, keep_thumb=True)
+            db.update("clips", c["id"], {"files_deleted": 1})
+            n += 1
+    elif body.what == "novos_antigos":
+        limit = time.time() - body.days * 86400
+        for c in db.query("SELECT * FROM clips WHERE status='pendente' AND created_at < ? AND rendering=0", (limit,)):
+            freed += _free_files(c)
+            db.execute("DELETE FROM clips WHERE id=?", (c["id"],))
+            n += 1
+    elif body.what == "lixo":
+        # arquivos que nenhum corte usa mais (sobras de versões antigas, cortes que deram erro, temporários)
+        used = set()
+        for c in db.query("SELECT * FROM clips"):
+            used |= {str(f) for f in _clip_files(c)}
+        recent = time.time() - 30 * 60       # não mexe em nada usado nos últimos 30 min (pode ser um corte sendo montado)
+        for f in list(C.CLIPS_DIR.rglob("*")):
+            if f.is_file() and str(f) not in used and f.stat().st_mtime < recent:
+                try:
+                    freed += f.stat().st_size
+                    f.unlink()
+                    n += 1
+                except OSError:
+                    pass
+        for f in C.DATA_DIR.glob("quadro_*.jpg"):
+            if f.stat().st_mtime > recent:
+                continue
+            try:
+                freed += f.stat().st_size
+                f.unlink()
+            except OSError:
+                pass
+        busy = {w.id for w in workers.values() if w.status == "gravando"}
+        for d in C.SEGMENTS_DIR.iterdir() if C.SEGMENTS_DIR.exists() else []:
+            if d.is_dir() and not (d.name.isdigit() and int(d.name) in busy):
+                for f in d.glob("*.ts"):
+                    try:
+                        freed += f.stat().st_size
+                        f.unlink()
+                    except OSError:
+                        pass
+    else:
+        raise HTTPException(400, "Opção de limpeza desconhecida")
+    plog.info("🧹 Limpeza: %s MB liberados (%d item(ns))", round(freed / 1e6), n)
+    return {"freed_mb": round(freed / 1e6, 1), "items": n}
 
 
 app.mount("/media", StaticFiles(directory=C.CLIPS_DIR), name="media")
