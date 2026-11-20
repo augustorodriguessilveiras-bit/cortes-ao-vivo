@@ -57,7 +57,8 @@ with _lock:
                   "overlay_on": "INTEGER DEFAULT 1", "overlay_applied": "TEXT", "file_hw": "TEXT",
                   "trim_start": "REAL", "trim_end": "REAL", "cap_start": "REAL", "cap_end": "REAL",
                   "cap_y": "REAL", "wm_x": "REAL", "wm_y": "REAL", "audio_info": "TEXT",
-                  "files_deleted": "INTEGER DEFAULT 0", "status_at": "REAL"},
+                  "files_deleted": "INTEGER DEFAULT 0", "status_at": "REAL",
+                  "features": "TEXT", "signal_score": "REAL", "content_score": "REAL"},
     }
     for table, cols in NEW.items():
         have = {r[1] for r in _conn.execute(f"PRAGMA table_info({table})")}

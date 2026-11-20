@@ -59,6 +59,19 @@ RULES = {
         "notes": ["Só valem trechos de lives a partir de 19/11/2026.",
                   "Não pode repostar vídeos que o próprio Luanz7 postou."],
     },
+    "sofiaespanha": {
+        "label": "Campeonato Sofia Espanha",
+        "display": "Sofia",
+        "fem": True,                                 # "A SOFIA", não "O SOFIA"
+        "watermark": "twitch.tv/sofiaespanha",       # o corte inteiro, 100% legível
+        "title_tag": "#sofiaespanha",                # obrigatória no título
+        "mention": "@sofiaespanha",
+        "hashtags": ["#sofiaespanha"],
+        "yt_tags": ["sofia espanha", "sofiaespanha", "cortes sofia espanha", "sofia espanha gta 6", "sofia espanha twitch"],
+        "notes": ["O corte precisa ter a Sofia como protagonista na maior parte.",
+                  "Vale live da Twitch e vídeo do YouTube dela.",
+                  "Proibido fake react."],
+    },
     "yayahuz": {
         "label": "Campeonato Yayah",
         "display": "Yayah",
@@ -73,7 +86,8 @@ RULES = {
                   "Não vale corte de react de filme ou série."],
     },
 }
-ALIASES = {"renatovicente": "orenatovicente", "mitsuke01": "mitsuke", "yayah": "yayahuz", "luan": "luanz7"}
+ALIASES = {"renatovicente": "orenatovicente", "mitsuke01": "mitsuke", "yayah": "yayahuz", "luan": "luanz7",
+           "sofia": "sofiaespanha", "sofiaespanhaoficial": "sofiaespanha"}
 
 # palavras que não entram nos títulos/textos dos canais com regra "safe"
 UNSAFE = re.compile(r"(VERGONHA|BURR|SURT|SABOT|FAIL|MORREU|WASTED|CHOR|PERDEU A CABE|PASSOU DO LIMITE|"

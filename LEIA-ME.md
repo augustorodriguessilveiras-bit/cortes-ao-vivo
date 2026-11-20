@@ -127,6 +127,7 @@ Alguns canais têm regras próprias, aplicadas sozinhas só nos cortes deles (ar
 | Mitsuke (`mitsuke`) | #mitsuke | marca d'água kick.com/mitsuke | — |
 | Luanz7 (`luanz7`) | #luanz7 | **Lower** oficial (envie uma vez no painel: link do Drive ou arquivo) | @luanz7 |
 | Yayah (`yayahuz`) | #yayah | — | @yayahuz |
+| Sofia Espanha (`sofiaespanha`) | #sofiaespanha | marca d'água twitch.tv/sofiaespanha | @sofiaespanha |
 
 Em todos: sem #fyp/#viral (hashtags ligadas ao conteúdo). Na Yayah, só títulos e textos respeitosos, no feminino,
 e sem comentário do chat na descrição.

@@ -19,7 +19,9 @@ from pathlib import Path
 import numpy as np
 
 from . import config as C
-from . import db, meta, render, rules, settings, sources, transcribe
+import json
+
+from . import db, meta, quality, render, rules, settings, sources, transcribe
 from .procs import safe_unlink
 from .chat import TwitchChat
 
@@ -368,15 +370,26 @@ class ChannelWorker(threading.Thread):
             prev = db.query("SELECT title, overlay FROM clips WHERE channel_name=? ORDER BY created_at DESC LIMIT 60", (self.name,))
             gain = max([float(x) for x in __import__("re").findall(r"áudio \+(\d+) dB", " ".join(job["reasons"]))] or [0])
             speech = transcribe.transcribe(h)   # o que o streamer falou no corte
+            peak_rel = job["peak"] - start
+            q = quality.evaluate(job["score"], speech, peak_rel)
+            manual = "corte manual" in job["reasons"]
+            thr = float(settings.get("discard_below") or 0)
+            if q["known"] and not manual and thr > 0 and q["final"] < thr:
+                log.info("🗑 %s: momento descartado (nota %.1f, abaixo de %.1f). %s", self.name, q["final"], thr,
+                         " ".join(q["reasons"]))
+                safe_unlink(h)
+                return
             m = meta.make_meta(self.name, self.platform, self.url, lines, gain=gain, avoid=[r["title"] for r in prev],
-                               speech=speech, peak_rel=job["peak"] - start, avoid_hooks=[r["overlay"] for r in prev])
+                               speech=speech or [], peak_rel=peak_rel, avoid_hooks=[r["overlay"] for r in prev])
             clip_id = db.insert("clips", {
                 "channel_id": self.id, "channel_name": self.name, "peak_time": job["peak"],
-                "created_at": time.time(), "score": round(min(job["score"], 10.0), 1),
-                "reasons": " · ".join(job["reasons"]) or "pico detectado", "file_h": rel(h),
-                "platform": self.platform, "url": self.url, "cam": cam, "rendering": 1, "source": "live", **m})
+                "created_at": time.time(), "score": q["final"] if not manual else 10.0,
+                "reasons": " · ".join(list(job["reasons"]) + q["reasons"]) or "pico detectado", "file_h": rel(h),
+                "platform": self.platform, "url": self.url, "cam": cam, "rendering": 1, "source": "live",
+                "features": json.dumps(q["features"]) if q["features"] else None,
+                "signal_score": q["signal"], "content_score": q["content"], **m})
             render_vertical_for(clip_id)
-            log.info("✂ corte pronto: %s (nota %.1f)", name, min(job["score"], 10))
+            log.info("✂ corte pronto: %s (nota %.1f)", name, q["final"])
         except Exception:
             log.exception("falha ao gerar corte %s", name)
         finally:

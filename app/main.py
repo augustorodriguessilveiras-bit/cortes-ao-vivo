@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from . import config as C
 import urllib.parse
 
-from . import db, drive, meta, procs, render, rules, settings, sources, version, vod
+from . import db, drive, meta, procs, quality, render, rules, settings, sources, version, vod
 from .recorder import CLIP_POOL, ChannelWorker, render_vertical_for
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(message)s", datefmt="%H:%M:%S")
@@ -112,7 +112,7 @@ def state():
     disk = shutil.disk_usage(C.DATA_DIR)
     enc = render._enc[0] if render._enc else "verificando…"
     return {"channels": chans, "vods": vods, "settings": settings.get_all(), "activity": list(ACTIVITY)[::-1][:15],
-            "version": version.status(),
+            "version": version.status(), "learning": quality.stats(),
             "disk_free_gb": round(disk.free / 1e9, 1), "encoder": enc}
 
 
@@ -226,6 +226,8 @@ def edit_clip(clip_id: int, body: ClipIn):
     freed = 0
     if data.get("status"):
         data["status_at"] = time.time()
+        if data["status"] in ("aprovado", "postado"):
+            quality.record(clip_id, c.get("features"), 1)      # aprende: esse você gostou
         if data["status"] == "postado" and settings.get("posted_cleanup") and not c.get("files_deleted"):
             freed = _free_files(c, keep_thumb=True)      # já foi postado: libera o espaço do vídeo
             data["files_deleted"] = 1
@@ -485,6 +487,8 @@ def _free_files(c, keep_thumb=False):
 def delete_clip(clip_id: int):
     rows = db.query("SELECT * FROM clips WHERE id=?", (clip_id,))
     if rows:
+        if rows[0]["status"] == "pendente":
+            quality.record(clip_id, rows[0].get("features"), 0)   # aprende: esse você não quis
         _free_files(rows[0])
         db.execute("DELETE FROM clips WHERE id=?", (clip_id,))
     return {"ok": True}
@@ -541,6 +545,7 @@ def cleanup(body: CleanupIn):
     elif body.what == "novos_antigos":
         limit = time.time() - body.days * 86400
         for c in db.query("SELECT * FROM clips WHERE status='pendente' AND created_at < ? AND rendering=0", (limit,)):
+            quality.record(c["id"], c.get("features"), 0)
             freed += _free_files(c)
             db.execute("DELETE FROM clips WHERE id=?", (c["id"],))
             n += 1

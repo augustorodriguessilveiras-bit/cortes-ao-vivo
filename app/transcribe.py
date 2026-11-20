@@ -22,10 +22,10 @@ def available():
 
 
 def transcribe(path):
-    """Retorna [(inicio, fim, texto)] em segundos, ou [] se não der."""
+    """Retorna [(inicio, fim, texto)] em segundos, [] se ninguém falou, ou None se não deu pra ouvir."""
     global _model, _failed
     if _failed or not available():
-        return []
+        return None
     try:
         with _lock:
             if _model is None:
@@ -38,4 +38,4 @@ def transcribe(path):
     except Exception as e:
         _failed = True
         log.warning("⚠ O reconhecimento de fala não funcionou (%s). Os cortes continuam saindo normalmente, só sem ouvir a fala.", str(e)[:120])
-        return []
+        return None

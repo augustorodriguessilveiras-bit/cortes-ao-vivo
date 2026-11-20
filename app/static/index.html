@@ -179,6 +179,8 @@ details.meta[open] summary{margin-bottom:6px}
   <h2>Ajustes</h2>
   <div class="settings">
     <label>Nota mínima p/ cortar <input type="range" id="min_score" min="3" max="9.5" step="0.5"><output></output></label>
+    <label>Descartar sozinho cortes com nota abaixo de <input type="range" id="discard_below" min="0" max="8" step="0.5"><output></output></label>
+    <span class="wide muted" id="learnInfo"></span>
     <label>Duração do corte <input type="range" id="dur" min="20" max="90" step="5"><output></output></label>
     <label>Máx. cortes por VOD <input type="range" id="vod_max" min="3" max="40" step="1"><output></output></label>
     <label><input type="checkbox" id="ov_on"> Título dentro do vídeo</label>
@@ -409,6 +411,10 @@ function renderLives(){
   }).join("");
   const sel = $("#chanFilter"), cur = sel.value, names = [...new Set([...cs.map(c => c.name), ...clips.map(c => c.channel_name)])];
   sel.innerHTML = `<option value="">Todos os canais</option>` + names.map(n => `<option>${esc(n)}</option>`).join(""); sel.value = cur;
+  const L = ST.learning;
+  if (L) $("#learnInfo").innerHTML = L.ativo
+    ? `🧠 A nota já está aprendendo com você (${L.bons} aprovados/postados, ${L.ruins} excluídos).`
+    : `🧠 Aprendendo com você: ${L.bons} de 15 aprovados/postados e ${L.ruins} de 15 excluídos. Quando chegar nos dois, a nota passa a seguir o seu gosto.`;
   if (!ST.version){ showOldServer(); return; }
   const V = ST.version || {};
   $("#sys").textContent = `Versão ${V.local || "?"} · Vídeo: ${ST.encoder || "…"} · ${ST.disk_free_gb} GB livres`;
@@ -425,8 +431,8 @@ function renderLives(){
 let settingsBound = false, saveSet = null;
 function bindSettings(){
   if (settingsBound) return; settingsBound = true;
-  const fmt = { min_score: v => (+v).toFixed(1), dur: v => `${v}s (${Math.round(v * 2 / 3)}s antes do momento, ${v - Math.round(v * 2 / 3)}s depois)`, vod_max: v => v, ov_secs: v => +v > 40 ? "o vídeo todo" : v + "s" };
-  for (const id of ["min_score", "dur", "vod_max", "ov_secs", "ov_on", "tags", "audio_mode", "posted_cleanup"]){
+  const fmt = { min_score: v => (+v).toFixed(1), discard_below: v => +v === 0 ? "nunca" : (+v).toFixed(1), dur: v => `${v}s (${Math.round(v * 2 / 3)}s antes do momento, ${v - Math.round(v * 2 / 3)}s depois)`, vod_max: v => v, ov_secs: v => +v > 40 ? "o vídeo todo" : v + "s" };
+  for (const id of ["min_score", "discard_below", "dur", "vod_max", "ov_secs", "ov_on", "tags", "audio_mode", "posted_cleanup"]){
     const el = $("#" + id), out = el.parentElement.querySelector("output"), val = ST.settings[id];
     if (el.type === "checkbox") el.checked = !!val; else el.value = val;
     if (out) out.textContent = fmt[id](val);
@@ -459,7 +465,7 @@ function renderClips(force){
       : c.rendering ? `<div class="ph">Montando o vídeo vertical…<br>em qualidade original</div>`
       : `<video src="/media/${c.file_v}${v}" ${c.thumb ? `poster="/media/${c.thumb}${v}"` : ""} controls preload="none" playsinline></video>`;
     return `<div class="clip">${media}<div class="body">
-      <div class="row between"><b>${esc(c.channel_name)}</b><span class="score ${c.score >= 8 ? "hi" : ""}">${c.score}</span></div>
+      <div class="row between"><b>${esc(c.channel_name)}</b><span class="score ${c.score >= 8 ? "hi" : ""}" title="${c.content_score != null ? `pico ${c.signal_score} · conteúdo (o que ele falou) ${c.content_score}` : "nota do pico (áudio/chat)"}">${c.score}</span></div>
       <div class="row between muted"><span>${when}</span><span class="st ${c.status}">${c.status}</span></div>
       ${c.title ? `<div class="ctitle">${esc(c.title)}</div>` : ""}
       ${c.rules ? ruleBox(c) : ""}

@@ -13,7 +13,10 @@ import time
 import numpy as np
 
 from . import config as C
-from . import db, meta, render, settings, sources, transcribe
+import json
+from pathlib import Path
+
+from . import db, meta, quality, render, settings, sources, transcribe
 from .recorder import clip_paths, rel, render_vertical_for
 
 log = logging.getLogger("vod")
@@ -63,6 +66,23 @@ def _listen(vod_id, info):
     return np.array(db_s)
 
 
+def _speech_at(info, start, dur, vod_id, i):
+    """Baixa só o áudio desse trecho (versão leve) e ouve o que o streamer fala."""
+    (args, url), *rest = sources.ffmpeg_inputs(info)
+    if rest:
+        args, url = rest[-1]
+    from . import config as C
+    tmp = C.DATA_DIR / f"_trecho_vod{vod_id}_{i}.wav"
+    try:
+        render.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", *args, "-ss", f"{start:.2f}", "-i", url,
+                    "-t", f"{dur:.2f}", "-vn", "-ac", "1", "-ar", "16000", str(tmp)], timeout=300)
+        return transcribe.transcribe(tmp)
+    except Exception:
+        return None
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
 def find_peaks(levels, min_score, cooldown, max_clips):
     """Mesma nota da live (0 a 10), usando a base dos 10 minutos ao redor de cada trecho."""
     n = len(levels)
@@ -106,10 +126,31 @@ def _process(vod_id):
     levels = _listen(vod_id, light)
     if len(levels) < 60:
         raise RuntimeError("Não consegui ouvir o áudio do vídeo. Confira se o link abre no navegador e tente de novo.")
-    peaks = find_peaks(levels, cfg["min_score"], cfg["cooldown"], int(cfg["vod_max"]))
+    vod_max = int(cfg["vod_max"])
+    can_listen = transcribe.available()
+    # com o reconhecimento de fala: pega mais candidatos e fica só com os melhores (o que ele fala conta mais)
+    peaks = find_peaks(levels, cfg["min_score"], cfg["cooldown"], int(vod_max * 2.5) if can_listen else vod_max)
     if not peaks:
         _set(vod_id, status="pronto: nenhum momento forte achado", progress=1)
         return
+    evals = {}
+    if can_listen:
+        thr = float(cfg.get("discard_below") or 0)
+        for i, (t, score, gain) in enumerate(peaks, 1):
+            if vod_id in _stop_ids:
+                raise RuntimeError("cancelado")
+            _set(vod_id, status=f"ouvindo o que ele fala nos momentos ({i} de {len(peaks)})",
+                 progress=0.7 + 0.1 * (i - 1) / len(peaks))
+            start = max(0, t - cfg["before"])
+            speech = _speech_at(light, start, cfg["before"] + cfg["after"], vod_id, i)
+            evals[t] = (quality.evaluate(score, speech, t - start), speech)
+        ok = [p for p in peaks if not evals[p[0]][0]["known"] or thr <= 0 or evals[p[0]][0]["final"] >= thr]
+        dropped = len(peaks) - len(ok)
+        peaks = sorted(ok, key=lambda p: -evals[p[0]][0]["final"])[:vod_max]
+        log.info("🎬 VOD de %s: %d momentos bons escolhidos (%d descartados por nota baixa)", name, len(peaks), dropped)
+        if not peaks:
+            _set(vod_id, status="pronto: nenhum momento bom o bastante", progress=1)
+            return
     peaks.sort()
     best = sources.resolve(v["url"], "best")
     inputs = sources.ffmpeg_inputs(best)
@@ -132,15 +173,20 @@ def _process(vod_id):
         render.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", *args, "-t", f"{dur:.2f}", *maps,
                     *render.venc(), *render.AENC, "-movflags", "+faststart", str(h)], timeout=1800)
         prev = db.query("SELECT title, overlay FROM clips WHERE channel_name=? ORDER BY created_at DESC LIMIT 60", (name,))
-        speech = transcribe.transcribe(h)   # o que o streamer falou no corte
+        if t in evals:
+            q, speech = evals[t]
+        else:
+            speech = transcribe.transcribe(h)   # o que o streamer falou no corte
+            q = quality.evaluate(score, speech, t - start)
         m = meta.make_meta(name, v["platform"], channel_url, [], gain=gain, avoid=[r["title"] for r in prev],
-                           speech=speech, peak_rel=t - start, avoid_hooks=[r["overlay"] for r in prev])
+                           speech=speech or [], peak_rel=t - start, avoid_hooks=[r["overlay"] for r in prev])
         clip_id = db.insert("clips", {
             "channel_id": 0, "channel_name": name, "peak_time": time.time(), "created_at": time.time(),
-            "score": round(min(score, 10.0), 1),
-            "reasons": f"VOD {hh:02d}:{mm:02d}:{ss:02d} · áudio +{gain:.0f} dB", "file_h": rel(h),
+            "score": q["final"],
+            "reasons": " · ".join([f"VOD {hh:02d}:{mm:02d}:{ss:02d}", f"áudio +{gain:.0f} dB"] + q["reasons"]), "file_h": rel(h),
             "platform": v["platform"], "url": channel_url, "cam": cam, "rendering": 1,
-            "source": "vod", "vod_id": vod_id, **m})
+            "source": "vod", "vod_id": vod_id, "features": json.dumps(q["features"]) if q["features"] else None,
+            "signal_score": q["signal"], "content_score": q["content"], **m})
         render_vertical_for(clip_id)
         log.info("✂ corte %d de %d do VOD de %s pronto", i, len(peaks), name)
     _set(vod_id, status=f"pronto: {len(peaks)} cortes", progress=1)
