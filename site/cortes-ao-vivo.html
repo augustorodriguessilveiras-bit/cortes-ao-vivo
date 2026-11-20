@@ -1,0 +1,1019 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cortes ao Vivo</title>
+<style>
+/* Layout: coluna única — passos no topo, cartões das lives, cortes em grade */
+:root{
+  color-scheme:dark;
+  --bg:#0e0d14; --panel:#181622; --panel2:#221f30; --line:#2f2a42;
+  --text:#f1eef8; --muted:#9d96b4; --accent:#ff4f9a; --accent2:#ffb347;
+  --live:#ff3b5c; --ok:#3ddc97; --warn:#ffcc4d;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:16px 20px;border-bottom:1px solid var(--line);
+  background:linear-gradient(90deg,rgba(255,79,154,.13),rgba(255,179,71,.06) 60%,transparent)}
+h1{margin:0;font-size:20px}
+h1 span{background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
+main{max-width:1280px;margin:0 auto;padding:20px 16px 60px}
+h2{font-size:13px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);margin:28px 0 12px}
+.muted{color:var(--muted);font-size:13px}
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-bottom:16px}
+.step{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:13.5px;color:var(--muted)}
+.step b{color:var(--text);display:block;margin-bottom:2px;font-size:14px}
+form.add{display:flex;gap:8px;flex-wrap:wrap}
+input[type=text]{flex:1;min-width:220px;background:var(--panel);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:11px 14px;font-size:15px}
+button{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:9px 13px;font-size:14px;cursor:pointer;white-space:nowrap;font-family:inherit}
+button:hover{border-color:var(--accent)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent2);outline-offset:2px}
+button.primary{background:linear-gradient(90deg,var(--accent),#ff7a6b);border:0;font-weight:600;color:#fff}
+button.small{padding:6px 10px;font-size:13px}
+button.danger:hover{border-color:var(--live);color:var(--live)}
+button:disabled{opacity:.5;cursor:default}
+a{color:var(--accent2)}
+.lives{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px}
+.card.rec{border-color:rgba(255,59,92,.55)}
+.row{display:flex;align-items:center;gap:8px}
+.between{justify-content:space-between}
+.name{font-weight:650;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.badge{font-size:11px;padding:2px 7px;border-radius:99px;background:var(--panel2);color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.badge.twitch{color:#b08cff}.badge.youtube{color:#ff6b6b}.badge.kick{color:#53fc18}
+.dot{width:9px;height:9px;border-radius:50%;background:#555;flex:none}
+.dot.on{background:var(--live);animation:pulse 1.4s infinite}
+@keyframes pulse{50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.dot.on{animation:none}}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{font-size:12px;padding:2px 8px;border-radius:99px;background:var(--panel2);color:var(--muted)}
+.chip.ok{color:var(--ok)}.chip.bad{color:var(--warn)}
+.meter{height:6px;background:var(--panel2);border-radius:9px;overflow:hidden}
+.meter i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--ok),var(--warn),var(--live));border-radius:9px;transition:width .4s}
+svg.spark{width:100%;height:34px;display:block}
+.actions{display:flex;gap:6px;flex-wrap:wrap}
+.warn{font-size:13px;color:var(--warn)}
+.settings{display:flex;gap:18px;flex-wrap:wrap;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 14px;font-size:13.5px;color:var(--muted)}
+.settings label{display:flex;align-items:center;gap:8px}
+.settings input[type=range]{width:120px;accent-color:var(--accent)}
+.settings output{color:var(--text);font-variant-numeric:tabular-nums;min-width:2.5em}
+.clips{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}
+.clip{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;display:flex;flex-direction:column}
+.clip video{width:100%;aspect-ratio:9/16;max-height:420px;background:#000;display:block;object-fit:contain}
+.clip.rendering .ph{aspect-ratio:9/16;max-height:420px;display:grid;place-items:center;color:var(--muted);font-size:13px;text-align:center;padding:20px;background:#000}
+.clip .body{padding:10px 12px 12px;display:flex;flex-direction:column;gap:6px;flex:1}
+.score{font-weight:700;font-size:13px;padding:2px 8px;border-radius:8px;background:rgba(255,79,154,.15);color:var(--accent);font-variant-numeric:tabular-nums}
+.score.hi{background:rgba(255,179,71,.18);color:var(--accent2)}
+.reasons{font-size:12.5px;color:var(--muted)}
+.clip .actions{margin-top:auto;padding-top:4px}
+.ctitle{font-weight:650;font-size:14px;line-height:1.3;color:var(--text)}
+details.meta{border-top:1px solid var(--line);padding-top:6px}
+details.meta summary{cursor:pointer;font-size:13px;color:var(--accent2);list-style:none}
+details.meta summary::-webkit-details-marker{display:none}
+details.meta[open] summary{margin-bottom:6px}
+.meta label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted);margin-bottom:6px}
+.meta input,.meta textarea,.settings input.wide{width:100%;background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:7px 9px;font:13px/1.4 inherit;font-family:inherit;resize:vertical}
+.meta textarea{min-height:64px}
+.chatq{font-size:12.5px;font-style:italic;color:#cfc8e6}
+.empty{color:var(--muted);padding:28px;text-align:center;border:1px dashed var(--line);border-radius:14px;grid-column:1/-1}
+.modal{position:fixed;inset:0;background:rgba(5,4,10,.82);display:grid;place-items:center;z-index:50;padding:16px}
+.modal .box{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;max-width:1100px;width:100%;max-height:100%;overflow:auto;display:flex;flex-direction:column;gap:12px}
+.camwrap{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
+.camwrap canvas#camPick{flex:1 1 520px;min-width:0;max-width:100%;border-radius:10px;cursor:crosshair;background:#000;touch-action:none}
+.camwrap .pv{display:flex;flex-direction:column;gap:6px;align-items:center;font-size:12px;color:var(--muted)}
+.camwrap canvas#camPrev{width:180px;height:320px;border-radius:10px;background:#000}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);padding:10px 16px;border-radius:10px;opacity:0;transition:opacity .3s;pointer-events:none;max-width:90vw}
+#toast.show{opacity:1}
+</style>
+</head>
+<body>
+<header>
+  <h1>✂ <span>Cortes ao Vivo</span></h1>
+  <div class="muted" id="mem"></div>
+</header>
+<main>
+  <div id="previewWarn" hidden style="background:rgba(255,204,77,.12);border:1px solid var(--warn);color:var(--text);border-radius:12px;padding:14px 16px;margin-bottom:16px;font-size:14.5px">
+    <b style="color:var(--warn)">⚠ Você está vendo uma prévia.</b> Aqui dentro a gravação não funciona. Baixe o arquivo <b>cortes-ao-vivo.html</b> pro seu computador e abra com dois cliques no <b>Google Chrome</b>.
+  </div>
+  <div class="steps">
+    <div class="step"><b>1. Adicione a live</b>Cole o link ou o nome do canal e clique em Adicionar.</div>
+    <div class="step"><b>2. Abra a live</b>Clique em "Abrir live". Ela abre numa aba nova. Deixe na qualidade mais alta e com som.</div>
+    <div class="step"><b>3. Comece a gravar</b>Clique em "Gravar", escolha a aba da live e deixe marcado <b style="display:inline">"Compartilhar áudio da guia"</b>.</div>
+    <div class="step"><b>4. Deixe rolando</b>Deixe a live em tela cheia, marque a câmera em "📷" e não mexa mais no tamanho. Não feche a aba da live nem esta. Os cortes aparecem aqui embaixo sozinhos.</div>
+  </div>
+
+  <form class="add" id="addForm">
+    <input type="text" id="url" placeholder="Cole o link: twitch.tv/nome · kick.com/nome · youtube.com/@nome" autocomplete="off" required>
+    <button type="button" class="primary" id="addBtn">+ Adicionar</button>
+  </form>
+  <p class="muted">Aceita <b style="color:#b08cff">Twitch</b>, <b style="color:#53fc18">Kick</b> e <b style="color:#ff6b6b">YouTube</b> (link do canal ou da live). Na Twitch o corte usa o chat e o áudio; na Kick e no YouTube, só o áudio.</p>
+
+  <h2>Lives</h2>
+  <div class="lives" id="lives"></div>
+
+  <h2>Ajustes</h2>
+  <div class="settings">
+    <label>Nota mínima p/ cortar <input type="range" id="minScore" min="3" max="9.5" step="0.5"><output id="minScoreOut"></output></label>
+    <label>Segundos antes <input type="range" id="before" min="10" max="45" step="1"><output id="beforeOut"></output></label>
+    <label>Segundos depois <input type="range" id="after" min="5" max="25" step="1"><output id="afterOut"></output></label>
+    <label><input type="checkbox" id="autoDl"> Baixar cada corte automaticamente</label>
+    <label><input type="checkbox" id="ovOn"> Colocar o título dentro do vídeo</label>
+    <label>Texto aparece por <input type="range" id="ovSecs" min="3" max="41" step="1"><output id="ovSecsOut"></output></label>
+    <label style="flex:1 1 100%">Hashtags padrão <input type="text" class="wide" id="tags"></label>
+  </div>
+  <p class="muted">Muito corte ruim? Aumente a nota mínima. Poucos cortes? Diminua.</p>
+
+  <h2>Cortes</h2>
+  <div class="clips" id="clips"></div>
+</main>
+<div class="modal" id="camModal" hidden>
+  <div class="box" role="dialog" aria-labelledby="camTitle">
+    <div class="row between"><b id="camTitle" style="font-size:17px">📷 Onde está a câmera do streamer?</b><button class="small" id="camRefresh">↻ Pegar outra imagem</button></div>
+    <div class="muted">Clique e arraste em cima da <b style="color:var(--text)">webcam</b> pra marcar. À direita aparece como o corte vai ficar: câmera em cima, gameplay embaixo.</div>
+    <div class="camwrap">
+      <canvas id="camPick" width="960" height="540"></canvas>
+      <div class="pv"><canvas id="camPrev" width="360" height="640"></canvas>Prévia do corte</div>
+    </div>
+    <label class="muted" id="camRememberWrap" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="camRemember" checked> Usar essa posição também nos próximos cortes deste canal</label>
+    <div class="muted" id="camTip">Dica: deixe a live sempre do mesmo jeito (de preferência em <b style="color:var(--text)">tela cheia</b>) enquanto grava. Se mudar o tamanho da aba, a câmera sai do lugar.</div>
+    <div class="actions" style="justify-content:flex-end">
+      <button class="small danger" id="camNone">Sem câmera (só gameplay)</button>
+      <button class="small" id="camCancel">Cancelar</button>
+      <button class="small primary" id="camSave">Salvar</button>
+    </div>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+"use strict";
+/* ============================================================ utilidades */
+const $ = s => document.querySelector(s);
+const now = () => Date.now() / 1000;
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function toast(t, ms = 3500){ const e = $("#toast"); e.textContent = t; e.classList.add("show"); clearTimeout(toast._t); toast._t = setTimeout(() => e.classList.remove("show"), ms); }
+function median(a){ const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; }
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const once = (el, ev, ms = 8000) => new Promise((res, rej) => {
+  const t = setTimeout(() => { el.removeEventListener(ev, h); rej(new Error("timeout " + ev)); }, ms);
+  function h(){ clearTimeout(t); el.removeEventListener(ev, h); res(); }
+  el.addEventListener(ev, h);
+});
+
+// Relógio num Worker: não é desacelerado quando a aba fica em segundo plano
+function workerTimer(ms){
+  const w = new Worker(URL.createObjectURL(new Blob([`setInterval(()=>postMessage(0),${ms})`], {type: "text/javascript"})));
+  return w;
+}
+
+/* ============================================================ ajustes */
+const CFG = { minScore: 6.5, before: 25, after: 12, cooldown: 90, autoDl: false, ovOn: true, ovSecs: 10, tags: "#gta6 #gtavi #gta #gta6brasil #cortes #cortesdelive #fyp #viral" };
+try { Object.assign(CFG, JSON.parse(localStorage.getItem("cortes.cfg") || "{}")); } catch {}
+function bindSetting(id, fmt = v => v){
+  const el = $("#" + id), out = $("#" + id + "Out");
+  if (el.type === "checkbox"){ el.checked = !!CFG[id]; el.onchange = () => { CFG[id] = el.checked; saveCfg(); }; return; }
+  if (el.type === "text"){ el.value = CFG[id]; el.oninput = () => { CFG[id] = el.value; saveCfg(); }; return; }
+  el.value = CFG[id]; out.textContent = fmt(CFG[id]);
+  el.oninput = () => { CFG[id] = +el.value; out.textContent = fmt(CFG[id]); saveCfg(); };
+}
+function saveCfg(){ try { localStorage.setItem("cortes.cfg", JSON.stringify(CFG)); } catch {} }
+bindSetting("minScore", v => (+v).toFixed(1)); bindSetting("before", v => v + "s"); bindSetting("after", v => v + "s"); bindSetting("autoDl"); bindSetting("tags"); bindSetting("ovOn"); bindSetting("ovSecs", v => +v > 40 ? "o vídeo todo" : v + "s");
+
+/* ============================================================ formatos */
+const MIME = ["video/mp4;codecs=avc1.640028,mp4a.40.2", "video/mp4;codecs=avc1,mp4a.40.2", "video/mp4",
+  "video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"].find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || "video/webm";
+const EXT = MIME.startsWith("video/mp4") ? "mp4" : "webm";
+
+/* ============================================================ banco local (cortes ficam salvos no navegador) */
+const DB = (() => {
+  let dbp = null;
+  function open(){
+    if (!dbp) dbp = new Promise((res, rej) => {
+      const r = indexedDB.open("cortes-ao-vivo", 1);
+      r.onupgradeneeded = () => r.result.createObjectStore("clips", { keyPath: "id" });
+      r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+    });
+    return dbp;
+  }
+  async function tx(mode, fn){
+    try {
+      const db = await open();
+      return await new Promise((res, rej) => {
+        const t = db.transaction("clips", mode), st = t.objectStore("clips"), r = fn(st);
+        t.oncomplete = () => res(r && r.result); t.onerror = () => rej(t.error);
+      });
+    } catch (e) { console.warn("IndexedDB indisponível", e); return null; }
+  }
+  return {
+    put: c => tx("readwrite", s => s.put(c)),
+    del: id => tx("readwrite", s => s.delete(id)),
+    all: () => tx("readonly", s => s.getAll()),
+  };
+})();
+
+/* ============================================================ chat da Twitch (anônimo) */
+const HYPE = /(k{3,}|ha(ha)+|rs(rs)+|lul|kekw|omegalul|icant|pog|clip|corta|monka|wtf|caralho|mds|meu deus|nossa|aaa+|lmao|lol|😂|🤣|💀|\?\?\?|!!!)/i;
+class TwitchChat {
+  constructor(ch){ this.ch = ch.toLowerCase(); this.msgs = new Map(); this.hype = new Map(); this.lines = []; this.connected = false; this.alive = true; this.connect(); }
+  connect(){
+    if (!this.alive) return;
+    const ws = this.ws = new WebSocket("wss://irc-ws.chat.twitch.tv:443");
+    ws.onopen = () => { ws.send("NICK justinfan" + Math.floor(Math.random() * 90000 + 1000)); ws.send("JOIN #" + this.ch); this.connected = true; };
+    ws.onmessage = e => {
+      for (const line of String(e.data).split("\r\n")){
+        if (line.startsWith("PING")) ws.send("PONG :tmi.twitch.tv");
+        else if (line.includes(" PRIVMSG ")){
+          const text = line.slice(line.indexOf(" :", line.indexOf(" PRIVMSG ")) + 2), s = Math.floor(now());
+          this.msgs.set(s, (this.msgs.get(s) || 0) + 1);
+          this.lines.push({ t: now(), text }); if (this.lines.length > 30000) this.lines.splice(0, 5000);
+          if (HYPE.test(text)) this.hype.set(s, (this.hype.get(s) || 0) + 1);
+        }
+      }
+    };
+    ws.onclose = () => { this.connected = false; if (this.alive) setTimeout(() => this.connect(), 5000); };
+    ws.onerror = () => ws.close();
+  }
+  window(a, b){ let m = 0, h = 0; for (let s = a; s < b; s++){ m += this.msgs.get(s) || 0; h += this.hype.get(s) || 0; } return [m, h]; }
+  prune(before){
+    for (const map of [this.msgs, this.hype]) for (const k of map.keys()) if (k < before) map.delete(k);
+    const i = this.lines.findIndex(l => l.t >= before); this.lines.splice(0, i < 0 ? this.lines.length : i);
+  }
+  between(a, b){ return this.lines.filter(l => l.t >= a && l.t < b).map(l => l.text); }
+  close(){ this.alive = false; try { this.ws.close(); } catch {} }
+}
+
+/* ============================================================ uma live */
+const ROTATE = 150;         // cada gravador dura 150s; dois gravadores defasados = sempre há ≥75s guardados
+const lives = [];
+let nextLiveId = 1;
+
+function parseChannel(input){
+  let s = input.trim();
+  if (!/^[a-z]+:\/\//i.test(s) && !s.includes(".")) return { name: s.replace(/^@/, "").toLowerCase(), platform: "twitch", url: "https://www.twitch.tv/" + s.replace(/^@/, "").toLowerCase() };
+  if (!/^[a-z]+:\/\//i.test(s)) s = "https://" + s;
+  let u; try { u = new URL(s); } catch { return null; }
+  const host = u.hostname.replace(/^(www|m)\./, ""), parts = u.pathname.split("/").filter(Boolean);
+  if (host.endsWith("twitch.tv") && parts[0]) return { name: parts[0].toLowerCase(), platform: "twitch", url: "https://www.twitch.tv/" + parts[0].toLowerCase() };
+  if (host.endsWith("kick.com") && parts[0]) return { name: parts[0].toLowerCase(), platform: "kick", url: "https://kick.com/" + parts[0].toLowerCase() };
+  if (host.includes("youtube.com") || host === "youtu.be"){
+    const at = parts.find(p => p.startsWith("@"));
+    if (at) return { name: at.slice(1).toLowerCase(), platform: "youtube", url: `https://www.youtube.com/${at}/live` };
+    const vid = u.searchParams.get("v") || (host === "youtu.be" ? parts[0] : (parts[0] === "live" ? parts[1] : null));
+    if (vid) return { name: "youtube-" + vid.slice(0, 6), platform: "youtube", url: "https://www.youtube.com/watch?v=" + vid };
+    return { name: parts.at(-1) || "youtube", platform: "youtube", url: s };
+  }
+  return { name: parts.at(-1) || host, platform: "outro", url: s };
+}
+
+class Live {
+  constructor(ch){
+    Object.assign(this, ch);
+    this.cam = loadCams()[ch.url] || null;
+    this.id = nextLiveId++;
+    this.recording = false;
+    this.reset();
+  }
+  reset(){
+    this.audio = new Map(); this.acc = null;
+    this.scoredUntil = 0; this.pending = null; this.lastPeak = 0;
+    this.jobs = []; this.history = []; this.score = 0; this.slots = [null, null];
+    this.startedAt = 0; this.hasAudio = false; this.clipCount = this.clipCount || 0;
+  }
+
+  async start(){
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { displaySurface: "browser", frameRate: 30, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: { suppressLocalAudioPlayback: false, echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+        preferCurrentTab: false, selfBrowserSurface: "exclude", surfaceSwitching: "include", monitorTypeSurfaces: "exclude",
+      });
+    } catch (e) {
+      toast(e.name === "NotAllowedError" ? "Gravação cancelada. Clique em Gravar de novo e escolha a aba da live." : "Não deu pra capturar a aba: " + e.message);
+      return;
+    }
+    this.reset();
+    this.stream = stream;
+    this.pv = Object.assign(document.createElement("video"), { muted: true, playsInline: true, srcObject: stream });
+    this.pv.play().catch(() => {});
+    this.hasAudio = stream.getAudioTracks().length > 0;
+    stream.getVideoTracks()[0].addEventListener("ended", () => this.stop());
+
+    if (this.hasAudio){
+      this.ac = new AudioContext();
+      await this.ac.resume();
+      const src = this.ac.createMediaStreamSource(new MediaStream(stream.getAudioTracks()));
+      this.analyser = this.ac.createAnalyser(); this.analyser.fftSize = 2048;
+      const mute = this.ac.createGain(); mute.gain.value = 0;
+      src.connect(this.analyser); this.analyser.connect(mute); mute.connect(this.ac.destination);
+      this.buf = new Float32Array(this.analyser.fftSize);
+    } else {
+      toast("Atenção: o áudio da aba não foi compartilhado. Os cortes vão sair sem som. Clique em Parar e grave de novo marcando \"Compartilhar áudio da guia\".", 9000);
+    }
+    if (this.platform === "twitch") this.chat = new TwitchChat(this.name);
+
+    this.slots[0] = this.newRecorder();
+    this.startedAt = now();
+    this.recording = true;
+    render();
+  }
+
+  stop(){
+    if (!this.recording) return;
+    this.recording = false;
+    // corta o que estava pendente com o que já foi gravado
+    if (this.pending) this.queuePending();
+    this.processJobs(true);
+    for (const r of this.slots) if (r && r.mr.state !== "inactive" && !r.reserved){ r.discard = true; r.mr.stop(); }
+    this.stream?.getTracks().forEach(t => t.stop());
+    if (this.pv){ this.pv.srcObject = null; this.pv = null; }
+    this.chat?.close(); this.chat = null;
+    this.ac?.close(); this.ac = null;
+    render();
+  }
+
+  newRecorder(){
+    const mr = new MediaRecorder(this.stream, { mimeType: MIME, videoBitsPerSecond: 4_000_000, audioBitsPerSecond: 160_000 });
+    const r = { mr, chunks: [], start: now() };
+    mr.ondataavailable = e => { if (e.data && e.data.size && !r.discard) r.chunks.push(e.data); };
+    mr.start(1000);
+    return r;
+  }
+
+  manualClip(){
+    if (!this.recording) return;
+    const t = now();
+    this.jobs.push({ start: t - 40, end: t + 4, peak: t, score: 10, reasons: ["corte manual"] });
+    toast("Cortando os últimos 40 segundos…");
+  }
+
+  /* chamado 4x por segundo */
+  tick(){
+    if (!this.recording) return;
+    const t = now(), sec = Math.floor(t);
+
+    // 1) volume do áudio
+    if (this.analyser){
+      this.analyser.getFloatTimeDomainData(this.buf);
+      let sum = 0; for (const v of this.buf) sum += v * v;
+      if (!this.acc || this.acc.sec !== sec){
+        if (this.acc && this.acc.n) this.audio.set(this.acc.sec, 10 * Math.log10(this.acc.sum / this.acc.n + 1e-12));
+        this.acc = { sec, sum: 0, n: 0 };
+      }
+      this.acc.sum += sum / this.buf.length; this.acc.n++;
+    }
+
+    // 2) rodízio dos gravadores (memória limitada)
+    if (!this.slots[1] && t - this.startedAt >= ROTATE / 2) this.slots[1] = this.newRecorder();
+    for (let i = 0; i < 2; i++){
+      const r = this.slots[i];
+      if (r && t - r.start >= ROTATE){ r.discard = true; r.mr.stop(); this.slots[i] = this.newRecorder(); }
+    }
+
+    // 3) notas e detecção de picos
+    this.scoreUpTo(sec - (this.chat ? 18 : 4));
+
+    // 4) cortes prontos para sair
+    this.processJobs(false);
+
+    // 5) limpeza
+    if (sec % 30 === 0){
+      for (const k of this.audio.keys()) if (k < sec - 700) this.audio.delete(k);
+      this.chat?.prune(sec - 700);
+    }
+  }
+
+  scoreSecond(t){
+    const hist = [];
+    for (let s = t - 600; s < t - 5; s++){ const v = this.audio.get(s); if (v !== undefined) hist.push(v); }
+    if (hist.length < 60) return null;          // aquecendo: precisa de ~1 min de base
+    const med = median(hist), mad = median(hist.map(v => Math.abs(v - med))) * 1.4826 + 1;
+    let loud = -Infinity; for (let s = t; s < t + 3; s++){ const v = this.audio.get(s); if (v !== undefined && v > loud) loud = v; }
+    if (loud === -Infinity) loud = med;
+    const a = Math.max(0, ((loud - med) / mad - 1) * 2.2);
+    const reasons = [];
+    if (a >= 3) reasons.push(`áudio +${Math.round(loud - med)} dB`);
+    if (!this.chat) return { score: a, reasons };
+    const [m, h] = this.chat.window(t + 3, t + 18);
+    const [bm] = this.chat.window(t - 600, t - 30);
+    const base = Math.max(bm / 38, 2), ratio = m / base, hypeFrac = h / Math.max(m, 1);
+    const c = Math.max(0, (ratio - 1) * 2.5 + hypeFrac * 4 * Math.min(m / 5, 1));
+    if (ratio >= 1.8) reasons.push(`chat ${ratio.toFixed(1)}x mais rápido`);
+    if (h >= 3) reasons.push(`${h} msgs de hype/risada`);
+    return { score: Math.max(c, a * 0.8) + 0.3 * Math.min(a, c), reasons };
+  }
+
+  scoreUpTo(limit){
+    if (!this.scoredUntil) this.scoredUntil = Math.floor(this.startedAt) + 1;
+    for (let t = this.scoredUntil; t < limit; t++){
+      this.scoredUntil = t + 1;
+      const r = this.scoreSecond(t);
+      if (!r) continue;
+      this.score = Math.min(10, r.score);
+      this.history.push(this.score); if (this.history.length > 300) this.history.shift();
+      const p = this.pending;
+      if (!p){
+        if (r.score >= CFG.minScore && t - this.lastPeak > CFG.cooldown) this.pending = { peak: t, score: r.score, reasons: r.reasons, t0: t };
+      } else if (t - p.t0 <= 12){
+        if (r.score > p.score) Object.assign(p, { peak: t, score: r.score, reasons: r.reasons });
+      } else this.queuePending();
+    }
+  }
+
+  queuePending(){
+    const p = this.pending; this.pending = null; this.lastPeak = p.peak;
+    this.jobs.push({ start: p.peak - CFG.before, end: p.peak + CFG.after, peak: p.peak, score: Math.min(10, p.score), reasons: p.reasons });
+  }
+
+  processJobs(force){
+    const t = now();
+    const ready = this.jobs.filter(j => force || t >= j.end + 1);
+    if (!ready.length) return;
+    this.jobs = this.jobs.filter(j => !ready.includes(j));
+    const earliest = Math.min(...ready.map(j => j.start));
+    // escolhe o gravador mais novo que já estava gravando no início do corte (arquivo menor)
+    const cands = this.slots.map((r, i) => ({ r, i })).filter(x => x.r);
+    if (!cands.length) return;
+    let pick = cands.filter(x => x.r.start <= earliest).sort((a, b) => b.r.start - a.r.start)[0]
+            || cands.sort((a, b) => a.r.start - b.r.start)[0];
+    const r = pick.r; r.reserved = true;
+    if (this.recording) this.slots[pick.i] = this.newRecorder(); else this.slots[pick.i] = null;
+    r.mr.onstop = () => {
+      const blob = new Blob(r.chunks, { type: MIME }); r.chunks = [];
+      for (const j of ready){
+        const start = Math.max(j.start, r.start);
+        enqueueRender({ live: this, job: j, blob, offset: start - r.start, dur: j.end - start, cam: this.cam });
+      }
+    };
+    if (r.mr.state !== "inactive") r.mr.stop();
+  }
+}
+
+/* ============================================================ título, descrição e hashtags */
+// Cada tipo de momento é reconhecido pelo que o chat escreveu logo depois dele
+const CATS = {
+  policia: { re: /(pol[ií]cia|persegui[çc][aã]o|fuga|fugiu|estrelas?|procurado|swat|viatura|cops|preso|pris[aã]o)/i,
+    lead: "Perseguição insana", tags: ["#perseguicao", "#policia", "#fuga"],
+    titles: ["A FUGA MAIS INSANA DO {N} NO GTA 6 🚓", "{N} VS A POLÍCIA INTEIRA 🚨", "5 ESTRELAS: {N} ENLOUQUECEU NO GTA 6 🚓", "PERSEGUIÇÃO ABSURDA COM {N} 🚨", "{N} FUGIU DE UM JEITO QUE NINGUÉM ACREDITA 🚓"] },
+  fail: { re: /(^f+$|^f\s|\brip\b|morreu|morre|wasted|noob|^-1|perdeu tudo|que burro|burr[oa]|errou|eliminad)/i,
+    lead: "O fail", tags: ["#fail", "#gtafail", "#wasted"],
+    titles: ["{N} MORREU DO JEITO MAIS BURRO 💀", "F NO CHAT PRO {N} 😭 GTA 6", "{N} PERDEU TUDO EM 1 SEGUNDO 💀", "O MAIOR FAIL DO {N} NO GTA 6 😭", "WASTED: {N} NÃO ACREDITOU 💀"] },
+  epico: { re: /(pog|insan[oa]|brab[oa]|monstro|absurd[oa]|\bclip|clipa|🔥|que isso|goat|lenda|\bgg\b|mito|jogou muito)/i,
+    lead: "Jogada insana", tags: ["#insano", "#epico", "#jogadaincrivel"],
+    titles: ["{N} FEZ O IMPOSSÍVEL NO GTA 6 🔥", "JOGADA INSANA DO {N} NO GTA 6 😱", "O CHAT PEDIU CLIP: {N} FOI BRABO 🔥", "{N} MOSTROU COMO SE JOGA GTA 6 🔥", "ISSO FOI ABSURDO, {N} 🔥"] },
+  susto: { re: /(wtf|monka|caralho|\bmds\b|meu deus|nossa|\boq\b|o que foi|\?\?\?|😱|susto|medo|jumpscare)/i,
+    lead: "A reação", tags: ["#susto", "#reacao", "#wtf"],
+    titles: ["{N} TOMOU O SUSTO DA VIDA 😱", "O QUE ACONTECEU AQUI, {N}?! 😳", "NINGUÉM ENTENDEU NADA: {N} NO GTA 6 😱", "A REAÇÃO DO {N} FOI SURREAL 😳", "{N} FICOU SEM PALAVRAS NO GTA 6 😳"] },
+  engracado: { re: /(k{3,}|ha(ha)+|rs(rs)+|\blul\b|kekw|omegalul|icant|😂|🤣|💀|lmao)/i,
+    lead: "Momento hilário", tags: ["#humor", "#engracado", "#comedia"],
+    titles: ["{N} NÃO AGUENTOU 😂 GTA 6", "O CHAT CHOROU DE RIR COM {N} 😂", "{N} PASSOU VERGONHA NO GTA 6 🤣", "ISSO SÓ ACONTECE COM O {N} 😂", "NINGUÉM ESPERAVA ISSO DO {N} 💀"] },
+  geral: { lead: "Melhor momento", tags: ["#reacao", "#momentos"],
+    titles: ["{N} PERDEU A CABEÇA NO GTA 6 🤯", "O MOMENTO MAIS INSANO DA LIVE DO {N}", "{N} SURTOU NA LIVE DE GTA 6 😱", "OLHA O QUE O {N} FEZ NO GTA 6 👀", "ISSO ACONTECEU AO VIVO COM {N} 🎮"] },
+};
+const PLAT = { twitch: "Twitch", kick: "Kick", youtube: "YouTube", outro: "live" };
+
+// Coisas do GTA que o chat costuma citar: artigo + o que o streamer "foi fazer"
+const THINGS = {
+  urso: ["O URSO", "MEXER COM O URSO"], tubarao: ["O TUBARÃO", "NADAR COM TUBARÃO"], jacare: ["O JACARÉ", "MEXER COM O JACARÉ"],
+  policia: ["A POLÍCIA", "FUGIR DA POLÍCIA"], viatura: ["A VIATURA", "ROUBAR UMA VIATURA"], swat: ["A SWAT", "ENFRENTAR A SWAT"],
+  carro: ["O CARRO", "PEGAR UM CARRO"], moto: ["A MOTO", "DAR GRAU"], grau: ["O GRAU", "DAR GRAU"], bike: ["A BIKE", "DAR GRAU DE BIKE"],
+  aviao: ["O AVIÃO", "PILOTAR UM AVIÃO"], helicoptero: ["O HELICÓPTERO", "PILOTAR UM HELICÓPTERO"], heli: ["O HELI", "PILOTAR UM HELICÓPTERO"],
+  barco: ["O BARCO", "ANDAR DE BARCO"], lancha: ["A LANCHA", "PILOTAR UMA LANCHA"], caminhao: ["O CAMINHÃO", "ROUBAR UM CAMINHÃO"],
+  trem: ["O TREM", "PEGAR O TREM"], banco: ["O BANCO", "ASSALTAR O BANCO"], assalto: ["O ASSALTO", "FAZER UM ASSALTO"],
+  loja: ["A LOJA", "ASSALTAR A LOJA"], posto: ["O POSTO", "ASSALTAR O POSTO"], tiro: ["O TIRO", "TROCAR TIRO"],
+  tiroteio: ["O TIROTEIO", "ENTRAR NUM TIROTEIO"], bomba: ["A BOMBA", "MEXER COM UMA BOMBA"], explosao: ["A EXPLOSÃO", "EXPLODIR TUDO"],
+  praia: ["A PRAIA", "CURTIR A PRAIA"], prisao: ["A PRISÃO", "FUGIR DA PRISÃO"], hospital: ["O HOSPITAL", "IR PRO HOSPITAL"],
+  npc: ["O NPC", "ZOAR UM NPC"], bug: ["O BUG", "TESTAR UM BUG"], cachorro: ["O CACHORRO", "MEXER COM O CACHORRO"],
+  lucia: ["A LUCIA", "JOGAR COM A LUCIA"], jason: ["O JASON", "JOGAR COM O JASON"], corrida: ["A CORRIDA", "APOSTAR CORRIDA"],
+  pulo: ["O PULO", "DAR UM PULO"], rampa: ["A RAMPA", "PULAR DA RAMPA"], ponte: ["A PONTE", "PULAR DA PONTE"],
+};
+const ENDINGS = {
+  engracado: ["E NÃO ESPERAVA POR ISSO KKKKKKKKKK", "E DEU TUDO ERRADO KKKKKKKK"],
+  fail: ["E DEU MUITO RUIM 💀", "E SE ARREPENDEU NA HORA 💀"],
+  epico: ["E FEZ HISTÓRIA 🔥", "E MOSTROU COMO SE FAZ 🔥"],
+  susto: ["E TOMOU O SUSTO DA VIDA 😱", "E NINGUÉM ENTENDEU NADA 😳"],
+  policia: ["E VIROU O MAIS PROCURADO 🚨", "E A POLÍCIA NÃO PERDOOU 🚨"],
+  geral: ["E OLHA NO QUE DEU 😱", "E NÃO ESPERAVA POR ISSO 😳"],
+};
+const norm = w => w.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+function findSubject(lines){
+  const seen = new Map();
+  for (const l of lines){
+    const words = new Set(norm(l).match(/[a-z]+/g) || []);
+    for (const w of words) if (THINGS[w]) seen.set(w, (seen.get(w) || 0) + 1);
+  }
+  const best = [...seen.entries()].sort((a, b) => b[1] - a[1])[0];
+  return best && best[1] >= 2 ? best[0] : null;   // precisa aparecer em 2+ mensagens
+}
+function titleList(cat, N, subject){
+  const C = CATS[cat] || CATS.geral, out = [], ends = ENDINGS[cat] || ENDINGS.geral;
+  if (subject){
+    const [art, act] = THINGS[subject];
+    const de = art.replace(/^O /, "DO ").replace(/^A /, "DA ");
+    out.push(`${N} FOI ${act} NO GTA VI ${ends[0]}`, `${N} FOI ${act} NO GTA VI ${ends[1]}`);
+    if (cat === "engracado") out.push(`${art} ACABOU COM O ${N} KKKKKKKK`, `${N} E ${art}: NINGUÉM ESPERAVA ISSO 😂`);
+    if (cat === "fail") out.push(`${N} MORREU POR CAUSA ${de} 💀`, `${art} DESTRUIU O ${N} 💀`);
+    if (cat === "epico") out.push(`${N} DOMINOU ${art} NO GTA VI 🔥`);
+    if (cat === "susto") out.push(`${N} TOMOU SUSTO COM ${art} 😱`);
+    if (cat === "geral") out.push(`OLHA ${art} QUE O ${N} ACHOU NO GTA VI 👀`);
+  } else {
+    const emo = { engracado: "KKKKKKKKKK", fail: "💀", epico: "🔥", susto: "😱", policia: "🚨", geral: "😳" }[cat] || "😳";
+    out.push(`O ${N} NÃO ESPERAVA POR ISSO NO GTA VI ${emo}`);
+  }
+  return out.concat(C.titles.map(t => t.replaceAll("{N}", N)));
+}
+
+function topMessage(lines){
+  const count = new Map();
+  for (const raw of lines){
+    let t = raw.trim().replace(/\s+/g, " ").replace(/k{4,}/gi, "KKKK").replace(/(ha){3,}/gi, "HAHAHA");
+    if (t.length < 2 || t.length > 70 || /https?:|www\.|@/.test(t)) continue;
+    const key = t.toLowerCase(); const c = count.get(key) || { t, n: 0 }; c.n++; count.set(key, c);
+  }
+  // prefere frases (mais de uma palavra) entre as mais repetidas
+  return [...count.values()].sort((a, b) => (b.n + (b.t.includes(" ") ? 0.5 : 0)) - (a.n + (a.t.includes(" ") ? 0.5 : 0)))[0]?.t || "";
+}
+
+function makeMeta({ channel, platform, url, lines = [] }, titleIdx = null){
+  let cat = "geral", best = 1;
+  for (const [k, c] of Object.entries(CATS)){
+    if (!c.re) continue;
+    const n = lines.filter(l => c.re.test(l)).length;
+    if (n > best){ best = n; cat = k; }
+  }
+  const C = CATS[cat], N = channel.toUpperCase();
+  const subject = findSubject(lines);
+  const list = titleList(cat, N, subject);
+  const idx = titleIdx ?? 0;                     // o 1º da lista é o mais ligado à cena
+  const title = list[idx % list.length];
+  const chatTop = topMessage(lines);
+  const nameTag = "#" + channel.toLowerCase().replace(/[^a-z0-9_]/g, "");
+  const tags = [...new Set([...CFG.tags.split(/\s+/).filter(Boolean).map(t => t.startsWith("#") ? t : "#" + t),
+    nameTag, nameTag + "cortes", "#" + (PLAT[platform] || "live").toLowerCase(), ...C.tags])].join(" ");
+  const Nn = channel.charAt(0).toUpperCase() + channel.slice(1);
+  const desc = `${C.lead} do ${Nn} ao vivo no GTA 6 🎮` + (chatTop ? `\n💬 O chat: "${chatTop}"` : "") +
+    `\n🔴 Acompanhe o ${Nn} na ${PLAT[platform] || "live"}: ${url}`;
+  return { cat, title, titleIdx: idx, desc, tags, chatTop, subject, overlay: CFG.ovOn ? title : "" };
+}
+
+/* ============================================================ montagem dos cortes (vertical + horizontal) */
+const clips = [];
+let renderChain = Promise.resolve();
+function enqueueRender(task){
+  const clip = {
+    id: `${task.live.name}_${task.job.peak}_${Math.random().toString(36).slice(2, 6)}`,
+    channel: task.live.name, peak: task.job.peak, score: +task.job.score.toFixed(1),
+    reasons: task.job.reasons.join(" · ") || "pico detectado", status: "novo", rendering: true,
+    platform: task.live.platform, url: task.live.url, cam: task.cam || null,
+  };
+  clip.lines = task.live.chat ? task.live.chat.between(task.job.start, task.job.end + 15) : [];
+  Object.assign(clip, makeMeta(clip));
+  delete clip.lines;
+  clips.unshift(clip); task.live.clipCount++; renderClips(); render();
+  renderChain = renderChain.then(() => renderClip(task, clip)).catch(e => {
+    console.error(e); clip.rendering = false; clip.error = "Falhou ao montar o corte: " + e.message; renderClips();
+  });
+}
+
+function coverCrop(sx, sy, sw, sh, dw, dh){
+  const ar = dw / dh; let w = sw, h = sw / ar;
+  if (h > sh){ h = sh; w = sh * ar; }
+  return [sx + (sw - w) / 2, sy + (sh - h) / 2, w, h];
+}
+// Desenha um quadro vertical 9:16. Com câmera marcada: cam em cima, gameplay embaixo.
+// Sem câmera: gameplay no meio com fundo desfocado.
+// Faixa branca com texto preto e forte, entre a câmera e a gameplay (estilo cortes do TikTok)
+function drawCaption(ctx, text, W, yCenter, alpha){
+  if (!text || alpha <= 0) return;
+  const font = n => `900 ${n}px "Arial Black", "Segoe UI Black", Impact, "Segoe UI", Arial, sans-serif`;
+  const maxW = W * 0.92;
+  let size = Math.round(W * 0.056), lines = [];
+  const wrap = () => {
+    ctx.font = font(size); lines = []; let cur = "";
+    for (const w of text.toUpperCase().split(/\s+/)){
+      const t = cur ? cur + " " + w : w;
+      if (ctx.measureText(t).width <= maxW || !cur) cur = t; else { lines.push(cur); cur = w; }
+    }
+    if (cur) lines.push(cur);
+  };
+  wrap();
+  while ((lines.length > 3 || lines.some(l => ctx.measureText(l).width > maxW)) && size > W * 0.03){ size -= 2; wrap(); }
+  const lh = size * 1.18, pad = size * 0.55, bandH = lh * lines.length + pad * 2;
+  const top = Math.max(0, yCenter - bandH / 2);
+  ctx.save(); ctx.globalAlpha = alpha;
+  ctx.fillStyle = "#ffffff"; ctx.fillRect(0, top, W, bandH);
+  ctx.fillStyle = "#000000"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.font = font(size);
+  lines.forEach((l, i) => ctx.fillText(l, W / 2, top + pad + lh * (i + 0.5)));
+  ctx.restore();
+}
+
+function drawVertical(ctx, v, vw, vh, cam, W, H, S, sc, cap){
+  if (cam){
+    const camAR = (cam.w * vw) / (cam.h * vh);
+    const TH = Math.round(Math.max(H * 0.28, Math.min(H * 0.42, W / camAR)));
+    ctx.drawImage(v, ...coverCrop(cam.x * vw, cam.y * vh, cam.w * vw, cam.h * vh, W, TH), 0, 0, W, TH);
+    // gameplay: recorte central, sem a câmera (se ela estiver no canto, evita o lado dela)
+    const BH = H - TH;
+    let gx = 0, gw = vw;
+    const camCx = cam.x + cam.w / 2;
+    const [cx, cy, cw, ch] = coverCrop(gx, 0, gw, vh, W, BH);
+    let sx = cx;
+    if (cam.w < 0.5){ // câmera num canto: desloca o recorte pro lado oposto, sem sair do quadro
+      const camL = cam.x * vw, camR = (cam.x + cam.w) * vw;
+      if (camCx < 0.5 && sx < camR && cy < (cam.y + cam.h) * vh) sx = Math.min(vw - cw, Math.max(sx, camR));
+      if (camCx >= 0.5 && sx + cw > camL && cy < (cam.y + cam.h) * vh) sx = Math.max(0, Math.min(sx, camL - cw));
+    }
+    ctx.drawImage(v, sx, cy, cw, ch, 0, TH, W, BH);
+    ctx.fillStyle = "#000"; ctx.fillRect(0, TH - 3, W, 6);
+    if (cap) drawCaption(ctx, cap.text, W, TH, cap.alpha);
+    return;
+  }
+  const k = Math.max(S.width / vw, S.height / vh);
+  sc.drawImage(v, (S.width - vw * k) / 2, (S.height - vh * k) / 2, vw * k, vh * k);
+  ctx.imageSmoothingEnabled = true; ctx.drawImage(S, 0, 0, W, H);
+  const fitH = Math.round(W * vh / vw);
+  ctx.drawImage(v, 0, (H - fitH) / 2, W, fitH);
+  if (cap) drawCaption(ctx, cap.text, W, (H - fitH) / 2, cap.alpha);
+}
+
+async function loadVideo(blob){
+  const url = URL.createObjectURL(blob);
+  const v = document.createElement("video");
+  v.src = url; v.playsInline = true; v.preload = "auto";
+  await once(v, "loadedmetadata");
+  // vídeos do MediaRecorder não informam a duração; isso força o navegador a calcular
+  if (!isFinite(v.duration)){ v.currentTime = 1e7; await once(v, "durationchange", 5000).catch(() => {}); }
+  return { v, url };
+}
+
+// Toca um trecho do vídeo e grava o vertical (e, se pedido, o horizontal) em tempo real.
+async function playAndRecord(blob, offset, dur, cam, wantH, thumbAt, capText){
+  const { v, url } = await loadVideo(blob);
+  const total = isFinite(v.duration) ? v.duration : offset + dur;
+  offset = Math.max(0, Math.min(offset, total - 1));
+  dur = Math.min(dur, total - offset);
+  v.currentTime = offset; await once(v, "seeked").catch(() => {});
+
+  const vw = v.videoWidth || 1280, vh = v.videoHeight || 720;
+  const scale = Math.min(1, 1920 / vw);
+  const H = Object.assign(document.createElement("canvas"), { width: Math.round(vw * scale / 2) * 2, height: Math.round(vh * scale / 2) * 2 });
+  const V = Object.assign(document.createElement("canvas"), { width: 1080, height: 1920 });
+  const S = Object.assign(document.createElement("canvas"), { width: 108, height: 192 }); // fundo pequeno, desfocado barato
+  const hc = H.getContext("2d"), vc = V.getContext("2d"), sc = S.getContext("2d");
+  sc.filter = "blur(3px) brightness(0.7)";
+
+  const ac = new AudioContext(); await ac.resume();
+  const dest = ac.createMediaStreamDestination();
+  ac.createMediaElementSource(v).connect(dest);      // som vai pro arquivo, não pras caixas
+  const audioTracks = dest.stream.getAudioTracks();
+  const mk = (canvas, out) => {
+    const r = new MediaRecorder(new MediaStream([...canvas.captureStream(30).getVideoTracks(), ...audioTracks]), { mimeType: MIME, videoBitsPerSecond: 6_000_000 });
+    r.ondataavailable = e => e.data.size && out.push(e.data); return r;
+  };
+  const outH = [], outV = [];
+  const recs = [mk(V, outV)]; if (wantH) recs.push(mk(H, outH));
+
+  let thumb = null;
+  const draw = () => {
+    // a câmera é sempre relativa ao quadro atual (se o tamanho mudar no meio, continua certo)
+    const w = v.videoWidth || vw, h = v.videoHeight || vh;
+    if (wantH) hc.drawImage(v, 0, 0, H.width, H.height);
+    const t = v.currentTime - offset, secs = CFG.ovSecs > 40 ? 1e9 : CFG.ovSecs;
+    const cap = capText && t < secs ? { text: capText, alpha: Math.min(1, (secs - t) / 0.4) } : null;
+    drawVertical(vc, v, w, h, cam, 1080, 1920, S, sc, cap);
+  };
+  draw();
+  recs.forEach(r => r.start(1000));
+  const ticker = workerTimer(33);
+  await v.play();
+  const endAt = offset + dur;
+  await new Promise(res => {
+    ticker.onmessage = () => {
+      draw();
+      if (!thumb && v.currentTime >= offset + (capText ? 1.5 : Math.min(thumbAt, dur * 0.6))){
+        const T = Object.assign(document.createElement("canvas"), { width: 270, height: 480 });
+        T.getContext("2d").drawImage(V, 0, 0, 270, 480); thumb = T.toDataURL("image/jpeg", 0.75);
+      }
+      if (v.currentTime >= endAt - 0.05 || v.ended) res();
+    };
+  });
+  ticker.terminate(); v.pause();
+  const stopped = Promise.all(recs.map(r => once(r, "stop", 5000))).catch(() => {});
+  recs.forEach(r => r.stop()); await stopped;
+  ac.close(); URL.revokeObjectURL(url); v.removeAttribute("src");
+  return { vBlob: new Blob(outV, { type: MIME }), hBlob: wantH ? new Blob(outH, { type: MIME }) : null, thumb, vw, vh };
+}
+
+async function renderClip({ blob, offset, dur, cam }, clip){
+  const r = await playAndRecord(blob, offset, dur, cam, true, CFG.before, clip.overlay);
+  if (cam && cam.ar && Math.abs(r.vw / r.vh - cam.ar) / cam.ar > 0.03)
+    clip.warn = "A aba da live mudou de tamanho depois que a câmera foi marcada. Se a câmera saiu errada, clique em 📷 Ajustar câmera.";
+  Object.assign(clip, { rendering: false, hBlob: r.hBlob, vBlob: r.vBlob, thumb: r.thumb });
+  await DB.put(stripUrls(clip));
+  renderClips();
+  if (CFG.autoDl) download(clip, "v");
+  toast(`Novo corte de ${clip.channel} (nota ${clip.score})`);
+}
+
+// Refaz só o vertical de um corte pronto, com a câmera numa nova posição
+function rerenderVertical(clip, cam){
+  clip.cam = cam; clip.rendering = true; clip.warn = ""; renderClips();
+  renderChain = renderChain.then(async () => {
+    const r = await playAndRecord(clip.hBlob, 0, 1e6, cam, false, CFG.before, clip.overlay);
+    if (clip.vUrl){ URL.revokeObjectURL(clip.vUrl); clip.vUrl = null; }
+    Object.assign(clip, { rendering: false, vBlob: r.vBlob, thumb: r.thumb });
+    await DB.put(stripUrls(clip)); renderClips(); toast("Vertical refeito com a câmera nova");
+  }).catch(e => { console.error(e); clip.rendering = false; clip.error = "Falhou ao refazer: " + e.message; renderClips(); });
+}
+
+function stripUrls(c){ const { vUrl, hUrl, ...rest } = c; return rest; }
+function fileName(c, f){
+  const d = new Date(c.peak * 1000), p = n => String(n).padStart(2, "0");
+  return `${c.channel}_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}_${f === "v" ? "vertical" : "horizontal"}.${EXT}`;
+}
+function download(c, f){
+  const blob = f === "v" ? c.vBlob : c.hBlob; if (!blob) return;
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = fileName(c, f);
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+}
+
+/* ============================================================ tela */
+function spark(h){
+  if (h.length < 2) return "";
+  const pts = h.map((v, i) => `${(i / (h.length - 1) * 100).toFixed(1)},${(30 - v / 10 * 30).toFixed(1)}`).join(" ");
+  const y = (30 - CFG.minScore / 10 * 30).toFixed(1);
+  return `<svg class="spark" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true">
+    <line x1="0" x2="100" y1="${y}" y2="${y}" stroke="#ff4f9a" stroke-width="1" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>
+    <polyline points="${pts}" fill="none" stroke="#ffb347" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>`;
+}
+function elapsed(t){ const s = Math.floor(now() - t), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return h ? `${h}h${String(m).padStart(2, "0")}` : `${m} min`; }
+
+function render(){
+  const el = $("#lives");
+  if (!lives.length){ el.innerHTML = `<div class="empty">Nenhuma live ainda. Cole o link de um canal acima.</div>`; return; }
+  el.innerHTML = lives.map(l => {
+    const warm = l.recording && now() - l.startedAt < 62;
+    return `<div class="card ${l.recording ? "rec" : ""}">
+      <div class="row between"><div class="row" style="min-width:0"><span class="dot ${l.recording ? "on" : ""}"></span><span class="name">${esc(l.name)}</span></div>
+        <span class="badge ${l.platform}">${l.platform}</span></div>
+      <div class="muted">${l.recording ? `Gravando há ${elapsed(l.startedAt)} · ${l.clipCount} cortes` : `Parado · ${l.clipCount} cortes`}</div>
+      ${l.recording ? `
+        <div class="chips">
+          <span class="chip ${l.hasAudio ? "ok" : "bad"}">${l.hasAudio ? "✓ áudio" : "⚠ sem áudio"}</span>
+          ${l.platform === "twitch" ? `<span class="chip ${l.chat?.connected ? "ok" : "bad"}">${l.chat?.connected ? "✓ chat" : "chat conectando…"}</span>` : `<span class="chip">só áudio (sem chat)</span>`}
+          ${warm ? `<span class="chip bad">aprendendo o volume normal…</span>` : ""}
+        </div>
+        <div class="meter"><i style="width:${l.score * 10}%"></i></div>
+        <div class="row between muted"><span>Hype agora: <b style="color:var(--text)">${l.score.toFixed(1)}</b>/10</span><span>linha = nota mínima</span></div>
+        ${spark(l.history.filter((_, i, a) => (a.length - 1 - i) % 3 === 0))}` : ""}
+      <div class="actions">
+        <a href="${esc(l.url)}" target="_blank" rel="noopener"><button class="small" tabindex="-1">Abrir live ↗</button></a>
+        ${l.recording
+          ? `<button class="small primary" data-act="clip" data-id="${l.id}">✂ Cortar agora</button><button class="small" data-act="cam" data-id="${l.id}">📷 ${l.cam ? "Câmera ✓" : "Marcar câmera"}</button><button class="small" data-act="stop" data-id="${l.id}">■ Parar</button>`
+          : `<button class="small primary" data-act="start" data-id="${l.id}">● Gravar</button><button class="small danger" data-act="remove" data-id="${l.id}">Remover</button>`}
+      </div></div>`;
+  }).join("");
+  const mem = performance.memory ? ` · memória ${Math.round(performance.memory.usedJSHeapSize / 1e6)} MB` : "";
+  $("#mem").textContent = `${lives.filter(l => l.recording).length} gravando${mem}`;
+}
+
+let confirmDel = null;
+const openMeta = new Set();
+function renderClips(){
+  const el = $("#clips");
+  if (!clips.length){ el.innerHTML = `<div class="empty">Os cortes aparecem aqui quando o chat ou o áudio explodirem, ou quando você clicar em "✂ Cortar agora".</div>`; return; }
+  // só redesenha se algo mudou, e nunca por cima de um vídeo tocando
+  const key = JSON.stringify([confirmDel, clips.map(c => [c.id, c.rendering, c.status, !!c.error, c.titleIdx, c.warn || ""])]);
+  if (key === renderClips.key) return;
+  if (el.contains(document.activeElement) && /INPUT|TEXTAREA/.test(document.activeElement.tagName)) return; // está digitando
+  if ([...el.querySelectorAll("video")].some(v => !v.paused)) return;
+  renderClips.key = key;
+  el.innerHTML = clips.map(c => {
+    if (c.vBlob && !c.vUrl) c.vUrl = URL.createObjectURL(c.vBlob);
+    const when = new Date(c.peak * 1000).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    const media = c.rendering
+      ? `<div class="ph">${c.vBlob || c.hBlob ? "Refazendo o vídeo vertical…" : "Montando o corte…"}<br>leva o tempo do próprio corte (~${CFG.before + CFG.after}s)</div>`
+      : c.error ? `<div class="ph" style="aspect-ratio:9/16;display:grid;place-items:center;color:var(--warn);padding:16px">${esc(c.error)}</div>`
+      : `<video data-id="${esc(c.id)}" src="${c.vUrl}" ${c.thumb ? `poster="${c.thumb}"` : ""} controls preload="none" playsinline></video>`;
+    return `<div class="clip ${c.rendering ? "rendering" : ""}">${media}
+      <div class="body">
+        <div class="row between"><b>${esc(c.channel)}</b><span class="score ${c.score >= 8 ? "hi" : ""}">${c.score}</span></div>
+        <div class="row between muted"><span>${when}</span><span>${c.status === "aprovado" ? "✔ aprovado" : ""}</span></div>
+        ${c.title ? `<div class="ctitle">${esc(c.title)}</div>` : ""}
+        <div class="reasons">${esc(c.reasons)}</div>
+        ${c.warn ? `<div class="warn">⚠ ${esc(c.warn)}</div>` : ""}
+        ${c.chatTop ? `<div class="chatq">💬 "${esc(c.chatTop)}"</div>` : ""}
+        ${c.title && !c.error ? `<details class="meta" data-id="${esc(c.id)}" ${openMeta.has(c.id) ? "open" : ""}>
+          <summary>📝 Título, descrição e hashtags</summary>
+          <label>Título<input type="text" data-f="title" data-id="${esc(c.id)}" value="${esc(c.title)}"></label>
+          <label>Descrição<textarea data-f="desc" data-id="${esc(c.id)}">${esc(c.desc)}</textarea></label>
+          <label>Hashtags<textarea data-f="tags" data-id="${esc(c.id)}">${esc(c.tags)}</textarea></label>
+          <label>Texto dentro do vídeo (a faixa branca)<textarea data-f="overlay" data-id="${esc(c.id)}" placeholder="Vazio = sem texto">${esc(c.overlay || "")}</textarea></label>
+          <div class="actions">
+            <button class="small" data-c="cpt" data-id="${esc(c.id)}">Copiar título</button>
+            <button class="small" data-c="cpa" data-id="${esc(c.id)}">Copiar tudo</button>
+            <button class="small" data-c="newt" data-id="${esc(c.id)}">🔄 Outro título</button>
+            <button class="small" data-c="t2o" data-id="${esc(c.id)}">↓ Usar título no vídeo</button>
+            <button class="small primary" data-c="ovl" data-id="${esc(c.id)}">🎬 Aplicar texto no vídeo</button>
+          </div>
+        </details>` : ""}
+        ${c.rendering || c.error ? "" : `<div class="actions">
+          <button class="small" data-c="dlv" data-id="${esc(c.id)}">⬇ Vertical</button>
+          <button class="small" data-c="dlh" data-id="${esc(c.id)}">⬇ Horizontal</button>
+          <button class="small" data-c="cam" data-id="${esc(c.id)}">📷 Ajustar câmera</button>
+          ${c.status !== "aprovado" ? `<button class="small" data-c="ok" data-id="${esc(c.id)}">✔</button>` : ""}
+          <button class="small danger" data-c="del" data-id="${esc(c.id)}">${confirmDel === c.id ? "Confirmar?" : "🗑"}</button>
+        </div>`}
+      </div></div>`;
+  }).join("");
+}
+
+/* ============================================================ eventos */
+function addFromInput(){
+  const ch = parseChannel($("#url").value);
+  if (!ch || !ch.name){ toast("Não entendi esse link. Exemplo: twitch.tv/nomedocanal"); return; }
+  if (lives.some(l => l.url === ch.url)){ toast("Esse canal já está na lista"); return; }
+  lives.push(new Live(ch)); saveLives(); $("#url").value = ""; render();
+  toast("Adicionado! Agora clique em \"Abrir live\" e depois em \"Gravar\".");
+}
+$("#addBtn").addEventListener("click", addFromInput);
+$("#url").addEventListener("keydown", e => { if (e.key === "Enter"){ e.preventDefault(); addFromInput(); } });
+$("#addForm").addEventListener("submit", e => { e.preventDefault(); addFromInput(); });
+$("#lives").addEventListener("click", e => {
+  const b = e.target.closest("button[data-act]"); if (!b) return;
+  const l = lives.find(x => x.id === +b.dataset.id); if (!l) return;
+  if (b.dataset.act === "start"){
+    if (lives.filter(x => x.recording).length >= 2 && !b.dataset.ok){
+      b.dataset.ok = "1"; b.textContent = "Gravar mesmo assim?";
+      toast("Já tem 2 lives gravando. Com 3 ou mais o PC costuma travar e a qualidade cai. Clique de novo pra gravar mesmo assim.", 6000);
+      return;
+    }
+    l.start();
+  }
+  if (b.dataset.act === "stop") l.stop();
+  if (b.dataset.act === "clip") l.manualClip();
+  if (b.dataset.act === "cam") openCamModal(l);
+  if (b.dataset.act === "remove"){ lives.splice(lives.indexOf(l), 1); saveLives(); render(); }
+});
+$("#clips").addEventListener("click", async e => {
+  const b = e.target.closest("button[data-c]"); if (!b) return;
+  const c = clips.find(x => x.id === b.dataset.id); if (!c) return;
+  if (b.dataset.c === "dlv") download(c, "v");
+  if (b.dataset.c === "dlh") download(c, "h");
+  if (b.dataset.c === "ok"){ c.status = "aprovado"; await DB.put(stripUrls(c)); }
+  if (b.dataset.c === "cam"){ if (!c.hBlob) return toast("Esse corte não tem o vídeo original salvo."); return openCamModalClip(c); }
+  if (b.dataset.c === "t2o"){ c.overlay = c.title; openMeta.add(c.id); const ta = b.closest("details").querySelector('[data-f="overlay"]'); if (ta) ta.value = c.title; await DB.put(stripUrls(c)); return; }
+  if (b.dataset.c === "ovl"){ if (!c.hBlob) return toast("Esse corte não tem o vídeo original salvo."); openMeta.add(c.id); return rerenderVertical(c, c.cam || null); }
+  if (b.dataset.c === "cpt") return copy(c.title, "Título copiado");
+  if (b.dataset.c === "cpa") return copy(`${c.title}\n\n${c.desc}\n\n${c.tags}`, "Título, descrição e hashtags copiados");
+  if (b.dataset.c === "newt"){
+    const list = titleList(c.cat, c.channel.toUpperCase(), c.subject || null);
+    c.titleIdx = ((c.titleIdx ?? 0) + 1) % list.length; c.title = list[c.titleIdx];
+    openMeta.add(c.id); await DB.put(stripUrls(c));
+  }
+  if (b.dataset.c === "del"){
+    if (confirmDel !== c.id){ confirmDel = c.id; renderClips(); setTimeout(() => { if (confirmDel === c.id){ confirmDel = null; renderClips(); } }, 4000); return; }
+    confirmDel = null; clips.splice(clips.indexOf(c), 1); await DB.del(c.id);
+    if (c.vUrl) URL.revokeObjectURL(c.vUrl);
+  }
+  renderClips();
+});
+async function copy(text, msg){
+  try { await navigator.clipboard.writeText(text); toast(msg); }
+  catch { toast("Não deu pra copiar. Selecione o texto e use Ctrl+C."); }
+}
+let saveT = null;
+$("#clips").addEventListener("input", e => {
+  const f = e.target.dataset.f; if (!f) return;
+  const c = clips.find(x => x.id === e.target.dataset.id); if (!c) return;
+  c[f] = e.target.value;
+  if (f === "title"){ const t = e.target.closest(".body").querySelector(".ctitle"); if (t) t.textContent = c.title; }
+  clearTimeout(saveT); saveT = setTimeout(() => DB.put(stripUrls(c)), 600);
+});
+$("#clips").addEventListener("toggle", e => {
+  if (!e.target.matches("details.meta")) return;
+  e.target.open ? openMeta.add(e.target.dataset.id) : openMeta.delete(e.target.dataset.id);
+}, true);
+window.addEventListener("beforeunload", e => { if (lives.some(l => l.recording)){ e.preventDefault(); e.returnValue = ""; } });
+
+function loadCams(){ try { return JSON.parse(localStorage.getItem("cortes.cams") || "{}"); } catch { return {}; } }
+function saveCam(url, cam){ const all = loadCams(); if (cam) all[url] = cam; else delete all[url]; try { localStorage.setItem("cortes.cams", JSON.stringify(all)); } catch {} }
+
+let camSrc = null, camRect = null, camFrame = null, drag = null, camTimer = null;
+const camPick = $("#camPick"), camPrev = $("#camPrev");
+const prevS = Object.assign(document.createElement("canvas"), { width: 36, height: 64 }), prevSc = prevS.getContext("2d");
+prevSc.filter = "blur(2px) brightness(0.7)";
+const camVideo = () => camSrc?.kind === "live" ? camSrc.live.pv : camSrc?.video;
+function grabFrame(){
+  const v = camVideo(); if (!v || !v.videoWidth) return false;
+  camFrame = Object.assign(document.createElement("canvas"), { width: v.videoWidth, height: v.videoHeight });
+  camFrame.getContext("2d").drawImage(v, 0, 0);
+  camPick.width = 960; camPick.height = Math.round(960 * v.videoHeight / v.videoWidth);
+  return true;
+}
+const rectOk = r => r && r.w > 0.03 && r.h > 0.03;
+function drawPreview(){
+  // na live, a prévia acompanha a imagem ao vivo: dá pra ver se a câmera fica no lugar
+  const v = camSrc?.kind === "live" && camVideo()?.videoWidth ? camVideo() : camFrame;
+  if (!v) return;
+  const w = v.videoWidth || v.width, h = v.videoHeight || v.height;
+  const txt = camSrc?.kind === "clip" ? camSrc.clip.overlay : (CFG.ovOn ? `${camSrc?.name || ""} foi dar grau no GTA VI e não esperava por isso KKKKK` : "");
+  drawVertical(camPrev.getContext("2d"), v, w, h, rectOk(camRect) ? camRect : null, 360, 640, prevS, prevSc, txt ? { text: txt, alpha: 1 } : null);
+}
+function drawCamModal(){
+  if (!camFrame) return;
+  const c = camPick.getContext("2d"), W = camPick.width, H = camPick.height;
+  c.drawImage(camFrame, 0, 0, W, H);
+  if (camRect){
+    c.fillStyle = "rgba(0,0,0,.5)"; c.fillRect(0, 0, W, H);
+    c.drawImage(camFrame, camRect.x * camFrame.width, camRect.y * camFrame.height, camRect.w * camFrame.width, camRect.h * camFrame.height,
+      camRect.x * W, camRect.y * H, camRect.w * W, camRect.h * H);
+    c.strokeStyle = "#ffb347"; c.lineWidth = 3; c.strokeRect(camRect.x * W, camRect.y * H, camRect.w * W, camRect.h * H);
+  }
+  drawPreview();
+}
+function showCamModal(){
+  $("#camRememberWrap").hidden = camSrc.kind !== "clip";
+  $("#camNone").textContent = camSrc.kind === "clip" ? "Refazer sem câmera" : "Sem câmera (só gameplay)";
+  $("#camModal").hidden = false; drawCamModal();
+  clearInterval(camTimer); if (camSrc.kind === "live") camTimer = setInterval(drawPreview, 400);
+}
+function openCamModal(l){
+  camSrc = { kind: "live", live: l, url: l.url, name: l.name }; camRect = l.cam ? { ...l.cam } : null;
+  if (!grabFrame()){ toast("Ainda carregando a imagem da live. Tente de novo em alguns segundos."); camSrc = null; return; }
+  showCamModal();
+}
+async function openCamModalClip(c){
+  try {
+    const { v, url } = await loadVideo(c.hBlob);
+    const d = isFinite(v.duration) ? v.duration : 30;
+    v.currentTime = Math.min(CFG.before, d / 2); await once(v, "seeked").catch(() => {});
+    camSrc = { kind: "clip", clip: c, video: v, vurl: url, url: c.url || "", name: c.channel, dur: d };
+    camRect = c.cam ? { ...c.cam } : (loadCams()[c.url] || null);
+    grabFrame(); showCamModal();
+  } catch (e) { toast("Não deu pra abrir o vídeo desse corte: " + e.message); }
+}
+function closeCamModal(){
+  $("#camModal").hidden = true; clearInterval(camTimer);
+  if (camSrc?.vurl){ URL.revokeObjectURL(camSrc.vurl); camSrc.video.removeAttribute("src"); }
+  camSrc = null; camFrame = null;
+}
+function ptr(e){ const r = camPick.getBoundingClientRect(); return { x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) }; }
+camPick.addEventListener("pointerdown", e => { drag = ptr(e); camPick.setPointerCapture(e.pointerId); camRect = { x: drag.x, y: drag.y, w: 0, h: 0 }; drawCamModal(); });
+camPick.addEventListener("pointermove", e => {
+  if (!drag) return; const p = ptr(e);
+  camRect = { x: Math.min(drag.x, p.x), y: Math.min(drag.y, p.y), w: Math.abs(p.x - drag.x), h: Math.abs(p.y - drag.y) }; drawCamModal();
+});
+camPick.addEventListener("pointerup", () => { drag = null; });
+$("#camRefresh").onclick = async () => {
+  if (camSrc?.kind === "clip"){ const v = camSrc.video; v.currentTime = (v.currentTime + 4) % Math.max(1, camSrc.dur - 0.5); await once(v, "seeked").catch(() => {}); }
+  grabFrame(); drawCamModal();
+};
+$("#camCancel").onclick = closeCamModal;
+function applyToChannel(url, cam){
+  saveCam(url, cam);
+  for (const l of lives) if (l.url === url) l.cam = cam ? { ...cam } : null;
+}
+function finishCam(cam){
+  const src = camSrc;
+  if (src.kind === "live"){
+    applyToChannel(src.url, cam);
+    toast(cam ? `Câmera do ${src.name} salva! Os próximos cortes saem com a cam em cima.` : "Sem câmera: os cortes usam só a gameplay.");
+  } else {
+    if ($("#camRemember").checked) applyToChannel(src.url, cam);
+    rerenderVertical(src.clip, cam);
+  }
+  closeCamModal(); render();
+}
+$("#camNone").onclick = () => finishCam(null);
+$("#camSave").onclick = () => {
+  if (!rectOk(camRect)){ toast("Arraste o mouse em cima da webcam pra marcar."); return; }
+  finishCam({ ...camRect, ar: camFrame.width / camFrame.height });
+};
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#camModal").hidden) closeCamModal(); });
+
+function saveLives(){ try { localStorage.setItem("cortes.lives", JSON.stringify(lives.map(({ name, platform, url }) => ({ name, platform, url })))); } catch {} }
+
+/* ============================================================ início */
+(async () => {
+  let framed = true; try { framed = window.top !== window.self; } catch {}
+  if (framed) $("#previewWarn").hidden = false;
+  if (!navigator.mediaDevices?.getDisplayMedia || !window.MediaRecorder){
+    toast("Este navegador não suporta gravação de aba. Use o Google Chrome no computador.", 15000);
+  }
+  try { for (const ch of JSON.parse(localStorage.getItem("cortes.lives") || "[]")) lives.push(new Live(ch)); } catch {}
+  const saved = (await DB.all()) || [];
+  saved.sort((a, b) => b.peak - a.peak).forEach(c => {
+    if (!c.title){ Object.assign(c, makeMeta({ channel: c.channel, platform: c.platform || "twitch", url: c.url || "https://www.twitch.tv/" + c.channel })); DB.put(stripUrls(c)); }
+    clips.push(c);
+  });
+  render(); renderClips();
+  const clock = workerTimer(250);
+  let n = 0;
+  clock.onmessage = () => { for (const l of lives) l.tick(); if (++n % 4 === 0){ render(); renderClips(); } };
+})();
+</script>
+</body>
+</html>
