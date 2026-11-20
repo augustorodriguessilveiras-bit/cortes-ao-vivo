@@ -827,7 +827,9 @@ async function openCam(src){
   camSrc = src; camRect = src.cam ? { ...src.cam } : null; clipT = ST.settings.before || 10;
   $("#camRememberWrap").hidden = src.kind !== "clip";
   $("#layoutWrap").hidden = src.kind !== "clip";
-  $("#camTitle").textContent = src.kind === "clip" ? "📐 Formato do corte e posição da câmera" : "📷 Onde está a câmera do streamer?";
+  $("#camTitle").textContent = src.kind === "clip"
+    ? (src.cam && src.cam.auto ? "📐 Formato e câmera (achei a webcam sozinho: confira e ajuste se precisar)" : "📐 Formato do corte e posição da câmera")
+    : "📷 Onde está a câmera do streamer?";
   $("#camNone").hidden = src.kind === "clip";
   const lay = src.layout || "auto";
   document.querySelectorAll('input[name=layout]').forEach(r => r.checked = r.value === lay);
@@ -864,6 +866,10 @@ $("#camSave").onclick = () => {
 };
 document.querySelectorAll('input[name=layout]').forEach(r => r.addEventListener("change", drawCam));
 document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#camModal").hidden) closeCam(); });
+
+/* ------------------------------------------------------------ erros: mostra na tela pra dar pra mandar print */
+window.addEventListener("error", e => toast(`⚠ Erro no painel: ${e.message}. Tire um print e mande pro Claude.`, 12000));
+window.addEventListener("unhandledrejection", e => toast(`⚠ Erro no painel: ${e.reason?.message || e.reason}. Tire um print e mande pro Claude.`, 12000));
 
 /* ------------------------------------------------------------ início */
 loadState().then(() => loadClips(true)).catch(e => toast("Não conectou no programa: " + e.message, 8000));

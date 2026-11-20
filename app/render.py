@@ -275,19 +275,87 @@ def make_horizontal(inputs, out, offset, dur):
 LAYOUTS = {"cam": "Câmera em cima + gameplay", "full": "Tela cheia", "game": "Só gameplay"}
 
 
+def _frames_faces(h_path, fracs=(0.15, 0.3, 0.45, 0.6, 0.75, 0.9)):
+    """Rostos encontrados em alguns quadros do corte: lista (por quadro) de (cx, cy, w, h) de 0 a 1."""
+    import cv2
+    _, _, dur = probe(h_path)
+    casc = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_alt2.xml")
+    out = []
+    for frac in fracs:
+        tmp = Path(h_path).with_suffix(f".det{int(frac * 100)}.jpg")
+        try:
+            if not frame_jpg(h_path, tmp, t=max(0.5, dur * frac), width=960):
+                continue
+            img = cv2.imread(str(tmp), cv2.IMREAD_GRAYSCALE)
+        finally:
+            tmp.unlink(missing_ok=True)
+        if img is None:
+            continue
+        ih, iw = img.shape
+        faces = casc.detectMultiScale(img, scaleFactor=1.1, minNeighbors=5, minSize=(int(iw * 0.025), int(iw * 0.025)))
+        out.append([((x + w / 2) / iw, (y + h / 2) / ih, w / iw, h / ih) for x, y, w, h in faces])
+    return out
+
+
+def find_webcam(frames, vw, vh):
+    """
+    Acha a webcam do streamer: um rosto pequeno que fica PARADO no mesmo lugar em vários quadros
+    (rostos do jogo se mexem). Monta a caixa da webcam ao redor dele. Retorna o retângulo (0 a 1) ou None.
+    """
+    small = [[f for f in fr if 0.022 <= f[2] <= 0.12] for fr in frames]
+    best, best_n = None, 0
+    for fr in small:
+        for f in fr:
+            near = [g for other in small for g in other if abs(g[0] - f[0]) < 0.03 and abs(g[1] - f[1]) < 0.04]
+            n = len({id(other) for other in small for g in other if g in near})
+            if n > best_n:
+                best, best_n = near, n
+    if not best or best_n < max(3, len(frames) // 2):
+        return None
+    cx = sum(g[0] for g in best) / len(best)
+    cy = sum(g[1] for g in best) / len(best)
+    fw = sum(g[2] for g in best) / len(best) * vw          # tamanho do rosto em pixels
+    cam_w = min(vw * 0.5, fw * 3.6)                        # webcam mostra cabeça e ombros
+    cam_h = min(vh * 0.6, cam_w * 9 / 16)
+    x0 = cx * vw - cam_w / 2
+    y0 = cy * vh - cam_h * 0.42                             # o rosto fica um pouco acima do meio da webcam
+    x0 = max(0.0, min(vw - cam_w, x0))
+    y0 = max(0.0, min(vh - cam_h, y0))
+    return {"x": float(x0 / vw), "y": float(y0 / vh), "w": float(cam_w / vw), "h": float(cam_h / vh), "auto": True}
+
+
 def detect_layout(h_path, cam):
     """
     Olha alguns quadros do corte e decide o formato:
       - 'full': o rosto do streamer aparece grande e fora da caixinha da webcam (full cam / só a câmera)
-      - 'cam' : gameplay com a webcam no canto (precisa da câmera marcada)
+      - 'cam' : gameplay com a webcam no canto (marcada por você ou achada sozinha)
       - 'game': só gameplay
-    Retorna (formato, posição horizontal do rosto de 0 a 1).
+    Retorna (formato, posição horizontal do rosto de 0 a 1, webcam achada sozinha ou None).
     """
-    default = ("cam" if cam else "game"), 0.5
+    default = ("cam" if cam else "game"), 0.5, None
     try:
-        import cv2
-    except ImportError:
+        import cv2  # noqa: F401
+        frames = _frames_faces(h_path)
+    except Exception:
         return default
+    hits, xs = 0, []
+    for fr in frames:
+        if not fr:
+            continue
+        fx, fy, w, _ = max(fr, key=lambda f: f[2] * f[3])
+        in_cam = bool(cam) and cam["x"] - 0.03 <= fx <= cam["x"] + cam["w"] + 0.03 \
+            and cam["y"] - 0.03 <= fy <= cam["y"] + cam["h"] + 0.03
+        if w >= 0.08 and not in_cam:
+            hits += 1
+            xs.append(fx)
+    if hits >= max(2, len(frames) // 3):
+        return "full", sum(xs) / len(xs), None
+    if not cam:
+        vw, vh, _ = probe(h_path)
+        found = find_webcam(frames, vw, vh)
+        if found:
+            return "cam", 0.5, found
+    return default
     _, _, dur = probe(h_path)
     casc = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_alt2.xml")
     hits, xs = 0, []
@@ -387,15 +455,24 @@ def make_vertical(h_path, out, thumb, cam=None, caption="", cap_secs=10, layout=
     if te - ts < 1:
         ts, te = 0.0, full
     dur = te - ts
+    make_vertical.last_cam = None
     if layout == "auto":
-        layout, focus_x = detect_layout(h_path, cam)
+        layout, focus_x, auto_cam = detect_layout(h_path, cam)
+        if auto_cam:
+            cam = auto_cam
+            make_vertical.last_cam = auto_cam      # o programa achou a webcam sozinho
     else:
         focus_x = 0.5
         if layout == "full":
-            found, fx = detect_layout(h_path, None)
+            found, fx, _ = detect_layout(h_path, None)
             focus_x = fx if found == "full" else (cam["x"] + cam["w"] / 2 if cam else 0.5)
         if layout == "cam" and not cam:
-            layout = "game"
+            found, _, auto_cam = detect_layout(h_path, None)
+            if auto_cam:
+                cam = auto_cam
+                make_vertical.last_cam = auto_cam
+            else:
+                layout = "game"
     cap_png = Path(out).with_suffix(".faixa.png")
     cap_h = caption_png(caption, cap_png) if caption else 0
     cap_secs = 1e9 if cap_secs > 40 else cap_secs

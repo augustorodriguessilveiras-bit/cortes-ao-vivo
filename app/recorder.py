@@ -69,6 +69,10 @@ def render_vertical_for(clip_id):
             tmp_h.replace(hw)
             db.update("clips", clip_id, {"file_hw": rel(hw)})
         db.update("clips", clip_id, {"audio_info": getattr(render.make_vertical, "last_audio", None)})
+        found = getattr(render.make_vertical, "last_cam", None)
+        if found and not c["cam"]:
+            db.update("clips", clip_id, {"cam": found})
+            log.info("📷 %s: achei a webcam sozinho no corte (dá pra ajustar em 📐 Formato / câmera)", c["channel_name"])
         db.update("clips", clip_id, {"file_v": rel(v), "thumb": rel(thumb), "rendering": 0,
                                      "created_at": time.time(), "layout_used": used, "overlay_applied": caption})
         if used == "full" and (c.get("layout") or "auto") == "auto":
