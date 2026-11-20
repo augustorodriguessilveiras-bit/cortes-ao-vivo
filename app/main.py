@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import config as C
-from . import db, meta, render, settings, sources, vod
+from . import db, meta, render, settings, sources, version, vod
 from .recorder import CLIP_POOL, ChannelWorker, render_vertical_for
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(message)s", datefmt="%H:%M:%S")
@@ -50,6 +50,7 @@ async def lifespan(app):
     for ch in db.query("SELECT * FROM channels"):
         start_worker(ch)
     vod.start()
+    version.start_check()
     print("\n  Cortes ao Vivo rodando! Painel: http://localhost:8000")
     print("  Aqui embaixo aparece o que o programa estiver fazendo (gravando, cortes criados...).\n", flush=True)
     yield
@@ -108,6 +109,7 @@ def state():
     disk = shutil.disk_usage(C.DATA_DIR)
     enc = render._enc[0] if render._enc else "verificando…"
     return {"channels": chans, "vods": vods, "settings": settings.get_all(), "activity": list(ACTIVITY)[::-1][:15],
+            "version": version.status(),
             "disk_free_gb": round(disk.free / 1e9, 1), "encoder": enc}
 
 

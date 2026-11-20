@@ -118,6 +118,12 @@ details.meta[open] summary{margin-bottom:6px}
 .ovst.pend{color:var(--warn)}.ovst.ok{color:var(--ok)}
 .ovedit label{font-size:12.5px;color:var(--accent2);font-weight:600}
 .ovedit textarea{width:100%;padding:8px 10px;font-size:14px;font-weight:700;text-transform:uppercase;border-radius:8px;resize:vertical;background:var(--panel)}
+.verbanner{background:rgba(255,204,77,.12);border:1px solid var(--warn);border-radius:12px;padding:12px 16px;margin-bottom:16px;font-size:14.5px}
+.verbanner b{color:var(--warn)}
+.yttags{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line);padding-top:8px}
+.yttags .lbl{font-size:12.5px;color:var(--accent2);font-weight:600}
+.tagchips{display:flex;flex-wrap:wrap;gap:4px;max-height:96px;overflow:auto}
+.tagchips span{font-size:11.5px;background:var(--panel2);border:1px solid var(--line);border-radius:99px;padding:2px 8px;color:var(--text)}
 #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);padding:10px 16px;border-radius:10px;opacity:0;transition:opacity .3s;pointer-events:none;max-width:90vw;z-index:60}
 #toast.show{opacity:1}
 </style>
@@ -128,6 +134,7 @@ details.meta[open] summary{margin-bottom:6px}
   <div class="muted" id="sys"></div>
 </header>
 <main>
+  <div id="verBanner" class="verbanner" hidden></div>
   <div class="how">
     <div><b>1. Cole o link</b>Do canal (pra gravar as lives) ou de um vídeo que já passou (VOD).</div>
     <div><b>2. O programa grava sozinho</b>Baixa o vídeo direto da Kick/Twitch, na qualidade original. Não precisa deixar a live aberta.</div>
@@ -301,7 +308,15 @@ function renderLives(){
   }).join("");
   const sel = $("#chanFilter"), cur = sel.value, names = [...new Set([...cs.map(c => c.name), ...clips.map(c => c.channel_name)])];
   sel.innerHTML = `<option value="">Todos os canais</option>` + names.map(n => `<option>${esc(n)}</option>`).join(""); sel.value = cur;
-  $("#sys").textContent = `Vídeo: ${ST.encoder || "…"} · ${ST.disk_free_gb} GB livres`;
+  const V = ST.version || {};
+  $("#sys").textContent = `Versão ${V.local || "?"} · Vídeo: ${ST.encoder || "…"} · ${ST.disk_free_gb} GB livres`;
+  const vb = $("#verBanner");
+  if (V.outdated){
+    vb.hidden = false;
+    vb.innerHTML = V.unknown
+      ? `<b>⚠ Você não está na versão mais nova.</b> A atualização automática não rodou nesta pasta. Feche a janela preta e abra o <b>INICIAR.bat</b> de novo. Se continuar aparecendo este aviso, baixe o zip mais novo no link do Claude, extraia e abra o <b>INICIAR.bat</b> da pasta <b>cortes-ao-vivo</b> (copie a pasta <b>dados</b> da pasta antiga pra nova, pra manter seus cortes).`
+      : `<b>⚠ Tem versão nova (${esc(V.latest)}).</b> Feche a janela preta e abra o <b>INICIAR.bat</b> de novo pra atualizar.`;
+  } else vb.hidden = true;
 }
 
 /* ------------------------------------------------------------ ajustes */
@@ -363,13 +378,17 @@ function renderClips(force){
         <button class="small primary" data-c="ovl" data-id="${id}">🎬 Aplicar no vídeo</button>
         <div class="ovst" id="ovst${id}"></div>
       </div>
+      <div class="yttags">
+        <span class="lbl">🏷 Tags pro YouTube (campo "Tags" do YouTube Studio)</span>
+        <div class="tagchips" id="yt${id}">${(c.yt_tags || "").split(",").map(t => t.trim()).filter(Boolean).map(t => `<span>${esc(t)}</span>`).join("") || `<span>sem tags ainda: clique em 🔄 Gerar tags</span>`}</div>
+        <div class="actions"><button class="small primary" data-c="cpy" data-id="${id}">📋 Copiar tags</button><button class="small" data-c="ytg" data-id="${id}">🔄 Gerar tags</button></div>
+      </div>
       <details class="meta" data-id="${id}" ${openMeta.has(id) ? "open" : ""}>
         <summary>📝 Título, descrição e hashtags</summary>
         <label>Título<input type="text" data-f="title" data-id="${id}" value="${esc(c.title)}"></label>
         <label>Descrição<textarea data-f="descr" data-id="${id}">${esc(c.descr)}</textarea></label>
         <label>Hashtags<textarea data-f="tags" data-id="${id}">${esc(c.tags)}</textarea></label>
         <label>🏷 Tags do YouTube (cole no campo "Tags" do YouTube)<textarea data-f="yt_tags" data-id="${id}" rows="4">${esc(c.yt_tags || "")}</textarea></label>
-        <div class="actions"><button class="small" data-c="cpy" data-id="${id}">Copiar tags do YouTube</button><button class="small" data-c="ytg" data-id="${id}">🔄 Gerar tags</button></div>
         ${c.transcript ? `<div class="muted" style="font-size:12px">🗣 O que ele falou no corte: "${esc(c.transcript.slice(0, 300))}${c.transcript.length > 300 ? "…" : ""}"</div>` : ""}
         <div class="actions">
           <button class="small" data-c="cpt" data-id="${id}">Copiar título</button>
@@ -477,7 +496,7 @@ $("#clips").addEventListener("click", async e => {
       if (!ovOn(c)){ c.overlay_on = 1; await post(`/api/clips/${id}`, { overlay_on: true }); const sw = document.querySelector(`[data-ovon="${id}"]`); if (sw) sw.checked = true; }
       drawPreview(id); return;
     }
-    if (a === "ytg"){ const r = await post(`/api/clips/${id}/yttags`); c.yt_tags = r.yt_tags; const ta = document.querySelector(`textarea[data-f="yt_tags"][data-id="${id}"]`); if (ta) ta.value = r.yt_tags; toast("Tags do YouTube criadas"); return; }
+    if (a === "ytg"){ const r = await post(`/api/clips/${id}/yttags`); c.yt_tags = r.yt_tags; renderClips(true); toast("Tags do YouTube criadas"); return; }
     if (a === "ovl"){
       const ta = document.getElementById("ov" + id);
       if (ta){ c.overlay = ta.value; dirty.set(id, { ...(dirty.get(id) || {}), overlay: ta.value }); }
