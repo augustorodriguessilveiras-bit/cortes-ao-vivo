@@ -23,6 +23,7 @@ Seus cortes, canais e ajustes (pasta `dados`) não são mexidos. Pra pegar uma m
 - **Canal:** cole `kick.com/nome` ou `twitch.tv/nome`. Grava sozinho sempre que entrar ao vivo.
 - **VOD:** cole o link do vídeo (ex: `kick.com/nome/videos/...`). Ele ouve o áudio do vídeo inteiro, acha os picos e baixa só esses pedaços em alta qualidade.
 - **📷 Marcar câmera:** com o canal gravando, arraste em cima da webcam. Os próximos cortes saem com a cam em cima.
+- **✂ Editar corte** (em cada corte): corte o vídeo no começo e no fim, escolha de quando até quando o texto aparece, e arraste o texto e a marca d'água pra onde quiser, vendo a prévia. Ao salvar ele refaz o vídeo; o original fica guardado pra editar de novo.
 - **📐 Formato / câmera** (em cada corte): escolha **Automático**, **Câmera em cima + gameplay**, **Tela cheia (full cam)** ou **Só gameplay**, corrija a posição da câmera e refaça o vertical.
 - **Full cam automático:** quando o streamer está em tela cheia na câmera (sem gameplay), o corte sai na tela toda, centrado nele.
 - **Texto no vídeo** (em cada corte, logo abaixo do vídeo): botão pra ligar/desligar o texto, prévia do vídeo, **🔄 Outro texto** pra sugerir outro (sem repetir), edição à mão e **🎬 Aplicar no vídeo**.

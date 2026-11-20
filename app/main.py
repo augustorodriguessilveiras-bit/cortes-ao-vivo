@@ -201,7 +201,8 @@ def list_clips(status: str = "", channel: str = "", limit: int = 300):
     params.append(limit)
     rows = db.query(sql, params)
     for c in rows:
-        c["rules"] = rules.public(c["channel_name"])   # cortes feitos antes das tags do YouTube ganham as tags agora
+        c["rules"] = rules.public(c["channel_name"])
+        c["ov_secs"] = settings.get("ov_secs")   # cortes feitos antes das tags do YouTube ganham as tags agora
         if not c.get("yt_tags"):
             c["yt_tags"] = meta.youtube_tags(c["channel_name"], c.get("platform") or "", c.get("cat") or "geral", c.get("subject"))
             db.update("clips", c["id"], {"yt_tags": c["yt_tags"]})
@@ -302,6 +303,34 @@ def regen_tags(clip_id: int):
     tags = meta.youtube_tags(c["channel_name"], c.get("platform") or "", c.get("cat") or "geral", subject)
     db.update("clips", clip_id, {"yt_tags": tags})
     return {"yt_tags": tags}
+
+
+class EditIn(BaseModel):
+    trim_start: float | None = None
+    trim_end: float | None = None
+    cap_start: float | None = None
+    cap_end: float | None = None
+    cap_y: float | None = None
+    wm_x: float | None = None
+    wm_y: float | None = None
+    overlay: str | None = None
+    overlay_on: bool | None = None
+
+
+@app.post("/api/clips/{clip_id}/edit")
+def edit_clip_video(clip_id: int, body: EditIn):
+    """Salva o que foi feito no editor (corte manual, tempo e posição do texto, posição da marca d'água) e refaz o vídeo."""
+    c = _clip(clip_id)
+    data = body.model_dump()
+    if data["overlay"] is None:
+        data.pop("overlay")
+    if data["overlay_on"] is None:
+        data.pop("overlay_on")
+    data.update({"rendering": 1, "warn": None})
+    db.update("clips", clip_id, data)
+    CLIP_POOL.submit(render_vertical_for, clip_id)
+    plog.info("✂ %s: refazendo o corte com as suas edições…", c["channel_name"])
+    return {"ok": True}
 
 
 @app.post("/api/clips/{clip_id}/retext")

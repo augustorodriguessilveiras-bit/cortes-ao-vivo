@@ -51,13 +51,19 @@ def render_vertical_for(clip_id):
         wm = rule.get("watermark") if rule else None
         on = c.get("overlay_on") is None or bool(c.get("overlay_on"))
         caption = (c["overlay"] or "") if on else ""
+        trim = (c.get("trim_start"), c.get("trim_end")) if c.get("trim_start") is not None or c.get("trim_end") is not None else None
+        cap_win = (c.get("cap_start"), c.get("cap_end")) if c.get("cap_start") is not None or c.get("cap_end") is not None else None
+        wm_pos = (c["wm_x"], c["wm_y"]) if c.get("wm_x") is not None and c.get("wm_y") is not None else None
         used = render.make_vertical(h, tmp, thumb, cam=c["cam"], caption=caption,
-                                    cap_secs=settings.get("ov_secs"), layout=c.get("layout") or "auto", watermark=wm)
+                                    cap_secs=settings.get("ov_secs"), layout=c.get("layout") or "auto", watermark=wm,
+                                    trim=trim, cap_win=cap_win, cap_y=c.get("cap_y"), wm_pos=wm_pos)
         tmp.replace(v)
-        if wm and not c.get("file_hw"):
-            # horizontal pra baixar, com a marca d'água (o original fica limpo pra refazer o vertical)
+        if wm or trim:
+            # horizontal pra baixar, com o corte manual e a marca d'água (o original fica limpo pra poder editar de novo)
             hw = h.with_name(h.name.replace("_h.mp4", "_hw.mp4"))
-            render.add_watermark(h, hw, wm)
+            tmp_h = hw.with_name(hw.stem + ".novo.mp4")
+            render.horizontal_final(h, tmp_h, wm, trim)
+            tmp_h.replace(hw)
             db.update("clips", clip_id, {"file_hw": rel(hw)})
         db.update("clips", clip_id, {"file_v": rel(v), "thumb": rel(thumb), "rendering": 0,
                                      "created_at": time.time(), "layout_used": used, "overlay_applied": caption})

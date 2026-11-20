@@ -127,6 +127,21 @@ details.meta[open] summary{margin-bottom:6px}
 .yttags .lbl{font-size:12.5px;color:var(--accent2);font-weight:600}
 .tagchips{display:flex;flex-wrap:wrap;gap:4px;max-height:96px;overflow:auto}
 .tagchips span{font-size:11.5px;background:var(--panel2);border:1px solid var(--line);border-radius:99px;padding:2px 8px;color:var(--text)}
+.edgrid{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start}
+.edprev{display:flex;flex-direction:column;gap:6px;align-items:center;flex:none}
+#edCanvas{width:300px;height:533px;border-radius:12px;background:#000;cursor:grab;touch-action:none;max-width:100%}
+#edCanvas.drag{cursor:grabbing}
+.edctl{flex:1 1 380px;min-width:0;display:flex;flex-direction:column;gap:10px}
+.edctl h3{margin:8px 0 0;font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--accent2)}
+.edctl input[type=range]{width:100%;accent-color:var(--accent)}
+.edrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13.5px;color:var(--muted)}
+.edrow output{color:var(--text);font-variant-numeric:tabular-nums;min-width:3.2em}
+.edrow label{display:flex;align-items:center;gap:8px;flex:1 1 220px}
+.timeline{position:relative;height:30px;background:var(--panel2);border-radius:8px;cursor:pointer}
+.timeline .sel{position:absolute;top:0;bottom:0;background:rgba(255,79,154,.25);border-left:3px solid var(--accent);border-right:3px solid var(--accent)}
+.timeline .cap{position:absolute;bottom:2px;height:6px;background:var(--accent2);border-radius:3px}
+.timeline .head{position:absolute;top:-3px;bottom:-3px;width:2px;background:#fff}
+#edText{width:100%;min-height:60px;font-weight:700;text-transform:uppercase;font-size:14px;padding:8px 10px;border-radius:8px;background:var(--bg)}
 #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);padding:10px 16px;border-radius:10px;opacity:0;transition:opacity .3s;pointer-events:none;max-width:90vw;z-index:60}
 #toast.show{opacity:1}
 </style>
@@ -206,6 +221,42 @@ details.meta[open] summary{margin-bottom:6px}
     </div>
   </div>
 </div>
+<div class="modal" id="editModal" hidden>
+  <div class="box" role="dialog" aria-labelledby="edTitle">
+    <div class="row between"><b id="edTitle" style="font-size:17px">✂ Editar corte</b><button class="small" id="edClose">Fechar sem salvar</button></div>
+    <div class="edgrid">
+      <div class="edprev">
+        <canvas id="edCanvas" width="540" height="960" aria-label="Prévia do corte vertical"></canvas>
+        <div class="muted" style="text-align:center;max-width:300px">🖐 Arraste a <b style="color:var(--text)">faixa do texto</b> e a <b style="color:var(--text)">marca d'água</b> pra mudar de lugar</div>
+      </div>
+      <div class="edctl">
+        <div class="edrow"><button class="small primary" id="edPlay">▶ Tocar</button><span id="edTime">0:00</span></div>
+        <div class="timeline" id="edTl" title="Clique pra ir pra esse ponto"><div class="sel" id="edSel"></div><div class="cap" id="edCapBar"></div><div class="head" id="edHead"></div></div>
+
+        <h3>✂ Cortar o vídeo</h3>
+        <div class="edrow"><label>Começa em <input type="range" id="edTs" step="0.1"></label><output id="edTsO"></output></div>
+        <div class="edrow"><label>Termina em <input type="range" id="edTe" step="0.1"></label><output id="edTeO"></output></div>
+        <div class="edrow"><button class="small" id="edSetS">⟦ Começar aqui</button><button class="small" id="edSetE">Terminar aqui ⟧</button><span>Duração: <b id="edDur" style="color:var(--text)"></b></span></div>
+
+        <h3>✏️ Texto</h3>
+        <label class="switch"><input type="checkbox" id="edOn"> Texto no vídeo</label>
+        <textarea id="edText" placeholder="Texto que aparece no vídeo"></textarea>
+        <div class="edrow"><label>Aparece em <input type="range" id="edCa" step="0.1"></label><output id="edCaO"></output></div>
+        <div class="edrow"><label>Some em <input type="range" id="edCb" step="0.1"></label><output id="edCbO"></output></div>
+        <div class="edrow"><button class="small" id="edCaNow">Aparecer a partir daqui</button><button class="small" id="edCbNow">Sumir aqui</button><button class="small" id="edCapAll">O corte todo</button></div>
+        <div class="edrow">Lugar do texto: <button class="small" data-capy="0.12">Em cima</button><button class="small" data-capy="def">Padrão</button><button class="small" data-capy="0.5">Meio</button><button class="small" data-capy="0.86">Embaixo</button></div>
+
+        <div id="edWmBox">
+          <h3>💧 Marca d'água</h3>
+          <div class="edrow">Lugar: <button class="small" data-wmy="0.06">Em cima</button><button class="small" data-wmy="0.5">Meio</button><button class="small" data-wmy="0.8">Padrão (embaixo)</button><button class="small" data-wmy="0.93">Bem embaixo</button></div>
+        </div>
+
+        <div class="edrow" style="margin-top:6px"><button class="primary" id="edSave">🎬 Salvar e refazer o vídeo</button><button class="small danger" id="edReset">Voltar ao original</button></div>
+        <div class="muted" style="font-size:12px">Ao salvar, o vídeo vertical e o horizontal são refeitos com essas mudanças (1 a 2 minutos). O vídeo original fica guardado, então dá pra editar de novo quando quiser.</div>
+      </div>
+    </div>
+  </div>
+</div>
 <div id="toast" role="status"></div>
 
 <script>
@@ -228,45 +279,67 @@ let ST = { channels: [], vods: [], settings: {} }, clips = [], filt = { status: 
 
 /* ------------------------------------------------------------ desenho do vertical (só pra prévia; o vídeo de verdade é feito pelo ffmpeg) */
 function coverCrop(sx, sy, sw, sh, dw, dh){ const ar = dw / dh; let w = sw, h = sw / ar; if (h > sh){ h = sh; w = sh * ar; } return [sx + (sw - w) / 2, sy + (sh - h) / 2, w, h]; }
-function drawCaption(ctx, text, W, yCenter){
-  text = (text || "").replace(/[\u{1F000}-\u{1FFFF}☀-➿️‍]/gu, "").replace(/\s+/g, " ").trim().toUpperCase();
-  if (!text) return;
+function drawCaption(ctx, text, W, yCenter, alpha = 1, H = Infinity){
+  text = (text || "").replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}]/gu, "").replace(/\s+/g, " ").trim().toUpperCase();
+  if (!text) return null;
   const font = n => `900 ${n}px "Arial Black","Segoe UI Black",Arial,sans-serif`, maxW = W * 0.92;
   let size = Math.round(W * 0.056), lines = [];
   const wrap = () => { ctx.font = font(size); lines = []; let cur = "";
     for (const w of text.split(" ")){ const t = cur ? cur + " " + w : w; if (ctx.measureText(t).width <= maxW || !cur) cur = t; else { lines.push(cur); cur = w; } }
     if (cur) lines.push(cur); };
   wrap(); while ((lines.length > 3 || lines.some(l => ctx.measureText(l).width > maxW)) && size > W * 0.03){ size -= 2; wrap(); }
-  const lh = size * 1.18, pad = size * 0.55, bh = lh * lines.length + pad * 2, top = Math.max(0, yCenter - bh / 2);
+  const lh = size * 1.18, pad = size * 0.55, bh = lh * lines.length + pad * 2;
+  const top = Math.max(0, Math.min(H - bh, yCenter - bh / 2));
+  ctx.save(); ctx.globalAlpha = alpha;
   ctx.fillStyle = "#fff"; ctx.fillRect(0, top, W, bh);
   ctx.fillStyle = "#000"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
   lines.forEach((l, i) => ctx.fillText(l, W / 2, top + pad + lh * (i + 0.5)));
+  ctx.restore();
+  return { x: 0, y: top, w: W, h: bh };
 }
-function drawVertical(ctx, img, vw, vh, cam, W, H, caption, layout){
+// Selo da marca d'água (mesmo tamanho do vídeo final: 5,2% da largura)
+function drawWatermark(ctx, text, W, H, xc, yc){
+  const size = Math.max(10, Math.round(W * 0.052));
+  ctx.save(); ctx.font = `700 ${size}px "Segoe UI",Arial,sans-serif`;
+  const tw = ctx.measureText(text).width, padX = size * 0.7, padY = size * 0.38;
+  const w = tw + padX * 2, h = size * 1.2 + padY * 2;
+  const x = Math.max(0, Math.min(W - w, xc - w / 2)), y = Math.max(0, Math.min(H - h, yc - h / 2));
+  ctx.fillStyle = "rgba(0,0,0,.65)"; ctx.beginPath(); ctx.roundRect(x, y, w, h, h / 2); ctx.fill();
+  ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(text, x + w / 2, y + h / 2);
+  ctx.restore();
+  return { x, y, w, h };
+}
+/* Desenha o vertical (prévia). opts: capY (0-1, centro da faixa), capAlpha, wm {text, x, y}.
+   Retorna onde ficaram a faixa e a marca d'água (pra arrastar no editor). */
+function drawVertical(ctx, img, vw, vh, cam, W, H, caption, layout, opts = {}){
   ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+  let yDef;
   if (layout === "full"){
     const cw = Math.min(vh * W / H, vw), fx = cam ? cam.x + cam.w / 2 : 0.5;
     const cx = Math.min(Math.max(0, fx * vw - cw / 2), vw - cw);
     ctx.drawImage(img, cx, 0, cw, vh, 0, 0, W, H);
-    drawCaption(ctx, caption, W, H * 0.70);
-    return;
-  }
-  if (layout === "game") cam = null;
-  if (cam){
-    const camAR = (cam.w * vw) / (cam.h * vh), TH = Math.round(Math.max(H * 0.28, Math.min(H * 0.42, W / camAR)));
-    ctx.drawImage(img, ...coverCrop(cam.x * vw, cam.y * vh, cam.w * vw, cam.h * vh, W, TH), 0, 0, W, TH);
-    const g = coverCrop(0, 0, vw, vh, W, H - TH), cx = cam.x * vw, cw = cam.w * vw;
-    if (cam.w < 0.5 && g[0] < cx + cw && g[0] + g[2] > cx)
-      g[0] = cx + cw / 2 >= vw / 2 ? Math.max(0, Math.min(g[0], cx - g[2])) : Math.min(vw - g[2], Math.max(g[0], cx + cw));
-    ctx.drawImage(img, ...g, 0, TH, W, H - TH);
-    ctx.fillStyle = "#000"; ctx.fillRect(0, TH - 1, W, 2);
-    drawCaption(ctx, caption, W, TH);
+    yDef = H * 0.70;
   } else {
-    ctx.save(); ctx.filter = "blur(8px) brightness(0.7)";
-    ctx.drawImage(img, ...coverCrop(0, 0, vw, vh, W, H), 0, 0, W, H); ctx.restore();
-    const fitH = W * vh / vw; ctx.drawImage(img, 0, (H - fitH) / 2, W, fitH);
-    drawCaption(ctx, caption, W, (H - fitH) / 2);
+    if (layout === "game") cam = null;
+    if (cam){
+      const camAR = (cam.w * vw) / (cam.h * vh), TH = Math.round(Math.max(H * 0.28, Math.min(H * 0.42, W / camAR)));
+      ctx.drawImage(img, ...coverCrop(cam.x * vw, cam.y * vh, cam.w * vw, cam.h * vh, W, TH), 0, 0, W, TH);
+      const g = coverCrop(0, 0, vw, vh, W, H - TH), cx = cam.x * vw, cw = cam.w * vw;
+      if (cam.w < 0.5 && g[0] < cx + cw && g[0] + g[2] > cx)
+        g[0] = cx + cw / 2 >= vw / 2 ? Math.max(0, Math.min(g[0], cx - g[2])) : Math.min(vw - g[2], Math.max(g[0], cx + cw));
+      ctx.drawImage(img, ...g, 0, TH, W, H - TH);
+      ctx.fillStyle = "#000"; ctx.fillRect(0, TH - 1, W, 2);
+      yDef = TH;
+    } else {
+      ctx.save(); ctx.filter = "blur(8px) brightness(0.7)";
+      ctx.drawImage(img, ...coverCrop(0, 0, vw, vh, W, H), 0, 0, W, H); ctx.restore();
+      const fitH = W * vh / vw; ctx.drawImage(img, 0, (H - fitH) / 2, W, fitH);
+      yDef = (H - fitH) / 2;
+    }
   }
+  const capRect = drawCaption(ctx, caption, W, opts.capY != null ? opts.capY * H : yDef, opts.capAlpha ?? 1, H);
+  const wmRect = opts.wm ? drawWatermark(ctx, opts.wm.text, W, H, (opts.wm.x ?? 0.5) * W, (opts.wm.y ?? 0.8) * H) : null;
+  return { capRect, wmRect, capYDefault: yDef / H };
 }
 
 /* ------------------------------------------------------------ lives e VODs */
@@ -409,6 +482,7 @@ function renderClips(force){
         </div>
       </details>
       <div class="actions">
+        <button class="small primary" data-c="edit" data-id="${id}">✂ Editar corte</button>
         <a class="btn small" href="/media/${c.file_v}${v}" download>⬇ Vertical</a>
         <a class="btn small" href="/media/${c.file_hw || c.file_h}" download>⬇ Horizontal</a>
         <button class="small" data-c="cam" data-id="${id}">📐 Formato / câmera</button>
@@ -461,7 +535,8 @@ function drawPreview(id){
   }
   if (!img){ ctx.fillStyle = "#000"; ctx.fillRect(0, 0, cv.width, cv.height); return; }
   const lay = c.layout_used || (c.cam ? "cam" : "game");
-  drawVertical(ctx, img, img.width, img.height, lay === "cam" ? c.cam : null, cv.width, cv.height, st.want, lay);
+  drawVertical(ctx, img, img.width, img.height, lay === "cam" ? c.cam : null, cv.width, cv.height, st.want, lay,
+    { capY: c.cap_y, wm: c.rules ? { text: c.rules.watermark, x: c.wm_x ?? 0.5, y: c.wm_y ?? 0.8 } : null });
 }
 const frameObs = new IntersectionObserver(entries => {
   for (const e of entries){
@@ -473,6 +548,113 @@ const frameObs = new IntersectionObserver(entries => {
   }
 }, { rootMargin: "200px" });
 function hookPreviews(){ document.querySelectorAll("canvas.ovprev").forEach(cv => { drawPreview(+cv.dataset.id); frameObs.observe(cv); }); }
+
+/* ------------------------------------------------------------ editor do corte */
+const ED = { c: null, v: null, raf: 0, drag: null, rects: {} };
+const fmtT = t => { t = Math.max(0, t || 0); const m = Math.floor(t / 60), s = (t % 60).toFixed(1).padStart(4, "0"); return `${m}:${s}`; };
+function openEditor(c){
+  const v = document.createElement("video");
+  v.src = `/media/${c.file_h}`; v.preload = "auto"; v.playsInline = true; v.crossOrigin = "anonymous";
+  const secs = c.ov_secs ?? ST.settings.ov_secs ?? 10;
+  Object.assign(ED, { c, v, drag: null, ts: c.trim_start ?? 0, te: c.trim_end ?? null, on: ovOn(c), text: c.overlay || "",
+    ca: c.cap_start ?? 0, cb: c.cap_end ?? (secs > 40 ? 9999 : secs), capY: c.cap_y ?? null,
+    wm: c.rules ? { text: c.rules.watermark, x: c.wm_x ?? 0.5, y: c.wm_y ?? 0.8 } : null });
+  $("#edWmBox").hidden = !c.rules;
+  $("#edOn").checked = ED.on; $("#edText").value = ED.text;
+  v.addEventListener("loadedmetadata", () => {
+    const d = v.duration; ED.dur = d; if (ED.te == null || ED.te > d) ED.te = d;
+    for (const id of ["edTs", "edTe"]){ $("#" + id).max = d.toFixed(1); }
+    v.currentTime = ED.ts + Math.min(1, (ED.te - ED.ts) / 2); syncEditor();
+  }, { once: true });
+  $("#editModal").hidden = false;
+  cancelAnimationFrame(ED.raf); ED.raf = requestAnimationFrame(edLoop);
+}
+function closeEditor(){ cancelAnimationFrame(ED.raf); if (ED.v){ ED.v.pause(); ED.v.removeAttribute("src"); ED.v.load(); } ED.v = null; $("#editModal").hidden = true; }
+function clipLen(){ return Math.max(0.5, (ED.te ?? 0) - ED.ts); }
+function syncEditor(){
+  if (!ED.dur) return;
+  const L = clipLen();
+  ED.ca = Math.min(Math.max(0, ED.ca), L - 0.5); ED.cb = Math.max(ED.cb, ED.ca + 0.5);
+  $("#edTs").value = ED.ts; $("#edTe").value = ED.te; $("#edTsO").textContent = fmtT(ED.ts); $("#edTeO").textContent = fmtT(ED.te);
+  $("#edDur").textContent = `${L.toFixed(1)} s`;
+  for (const id of ["edCa", "edCb"]){ $("#" + id).max = L.toFixed(1); }
+  $("#edCa").value = ED.ca; $("#edCb").value = Math.min(ED.cb, L);
+  $("#edCaO").textContent = `${ED.ca.toFixed(1)} s`; $("#edCbO").textContent = ED.cb >= L - 0.05 ? "no fim" : `${ED.cb.toFixed(1)} s`;
+  const pct = t => `${(t / ED.dur * 100).toFixed(2)}%`;
+  Object.assign($("#edSel").style, { left: pct(ED.ts), width: pct(L) });
+  Object.assign($("#edCapBar").style, { left: pct(ED.ts + ED.ca), width: pct(Math.max(0, Math.min(ED.cb, L) - ED.ca)), display: ED.on ? "" : "none" });
+}
+function edLoop(){
+  const v = ED.v; if (!v) return;
+  if (v.readyState >= 2 && ED.dur){
+    if (!v.paused && v.currentTime >= ED.te){ v.pause(); v.currentTime = ED.ts; $("#edPlay").textContent = "▶ Tocar"; }
+    const rel = v.currentTime - ED.ts, inWin = rel >= ED.ca && rel <= ED.cb;
+    const c = ED.c, lay = c.layout_used || (c.cam ? "cam" : "game"), cv = $("#edCanvas");
+    // fora do tempo do texto ele aparece apagadinho, só pra dar pra arrastar
+    ED.rects = drawVertical(cv.getContext("2d"), v, v.videoWidth, v.videoHeight, lay === "cam" ? c.cam : null, cv.width, cv.height,
+      ED.on ? ED.text : "", lay, { capY: ED.capY, capAlpha: inWin ? 1 : 0.35, wm: ED.wm });
+    $("#edTime").textContent = `${fmtT(v.currentTime)}  ·  no corte: ${fmtT(rel)} de ${fmtT(clipLen())}`;
+    $("#edHead").style.left = `${(v.currentTime / ED.dur * 100).toFixed(2)}%`;
+  }
+  ED.raf = requestAnimationFrame(edLoop);
+}
+$("#edClose").onclick = closeEditor;
+$("#edPlay").onclick = () => {
+  const v = ED.v; if (!v) return;
+  if (v.paused){ if (v.currentTime < ED.ts || v.currentTime >= ED.te - 0.05) v.currentTime = ED.ts; v.play(); $("#edPlay").textContent = "⏸ Pausar"; }
+  else { v.pause(); $("#edPlay").textContent = "▶ Tocar"; }
+};
+$("#edTl").addEventListener("pointerdown", e => {
+  if (!ED.dur) return; const r = $("#edTl").getBoundingClientRect();
+  ED.v.currentTime = Math.min(ED.dur, Math.max(0, (e.clientX - r.left) / r.width * ED.dur));
+});
+$("#edTs").oninput = e => { ED.ts = Math.min(+e.target.value, ED.te - 1); ED.v.currentTime = ED.ts; syncEditor(); };
+$("#edTe").oninput = e => { ED.te = Math.max(+e.target.value, ED.ts + 1); ED.v.currentTime = Math.max(ED.ts, ED.te - 1.5); syncEditor(); };
+$("#edSetS").onclick = () => { ED.ts = Math.min(ED.v.currentTime, ED.te - 1); syncEditor(); };
+$("#edSetE").onclick = () => { ED.te = Math.max(ED.v.currentTime, ED.ts + 1); syncEditor(); };
+$("#edOn").onchange = e => { ED.on = e.target.checked; syncEditor(); };
+$("#edText").oninput = e => { ED.text = e.target.value; };
+$("#edCa").oninput = e => { ED.ca = +e.target.value; ED.v.currentTime = ED.ts + ED.ca; syncEditor(); };
+$("#edCb").oninput = e => { ED.cb = +e.target.value >= clipLen() - 0.05 ? 9999 : +e.target.value; ED.v.currentTime = ED.ts + Math.min(ED.cb, clipLen()) - 0.2; syncEditor(); };
+$("#edCaNow").onclick = () => { ED.ca = Math.max(0, ED.v.currentTime - ED.ts); syncEditor(); };
+$("#edCbNow").onclick = () => { ED.cb = Math.max(ED.ca + 0.5, ED.v.currentTime - ED.ts); syncEditor(); };
+$("#edCapAll").onclick = () => { ED.ca = 0; ED.cb = 9999; syncEditor(); };
+document.querySelectorAll("[data-capy]").forEach(b => b.onclick = () => { ED.capY = b.dataset.capy === "def" ? null : +b.dataset.capy; });
+document.querySelectorAll("[data-wmy]").forEach(b => b.onclick = () => { if (ED.wm){ ED.wm.y = +b.dataset.wmy; ED.wm.x = 0.5; } });
+// arrastar texto e marca d'água na prévia
+function edPt(e){ const cv = $("#edCanvas"), r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * cv.width, y: (e.clientY - r.top) / r.height * cv.height }; }
+const inRect = (p, r) => r && p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+$("#edCanvas").addEventListener("pointerdown", e => {
+  const p = edPt(e), R = ED.rects || {}, cv = $("#edCanvas");
+  if (inRect(p, R.wmRect)) ED.drag = { what: "wm", dx: p.x - (R.wmRect.x + R.wmRect.w / 2), dy: p.y - (R.wmRect.y + R.wmRect.h / 2) };
+  else if (ED.on && inRect(p, R.capRect)) ED.drag = { what: "cap", dy: p.y - (R.capRect.y + R.capRect.h / 2) };
+  else return;
+  cv.setPointerCapture(e.pointerId); cv.classList.add("drag");
+});
+$("#edCanvas").addEventListener("pointermove", e => {
+  if (!ED.drag) return; const p = edPt(e), cv = $("#edCanvas");
+  if (ED.drag.what === "cap") ED.capY = Math.min(0.97, Math.max(0.03, (p.y - ED.drag.dy) / cv.height));
+  else { ED.wm.x = Math.min(0.97, Math.max(0.03, (p.x - ED.drag.dx) / cv.width)); ED.wm.y = Math.min(0.98, Math.max(0.02, (p.y - ED.drag.dy) / cv.height)); }
+});
+$("#edCanvas").addEventListener("pointerup", () => { ED.drag = null; $("#edCanvas").classList.remove("drag"); });
+async function saveEditor(reset){
+  const c = ED.c; if (!c) return;
+  const body = reset
+    ? { trim_start: null, trim_end: null, cap_start: null, cap_end: null, cap_y: null, wm_x: null, wm_y: null }
+    : { trim_start: ED.ts > 0.05 ? +ED.ts.toFixed(2) : null, trim_end: ED.te < ED.dur - 0.05 ? +ED.te.toFixed(2) : null,
+        cap_start: +ED.ca.toFixed(2), cap_end: ED.cb >= 9000 ? 9999 : +ED.cb.toFixed(2),
+        cap_y: ED.capY, wm_x: ED.wm ? +ED.wm.x.toFixed(3) : null, wm_y: ED.wm ? +ED.wm.y.toFixed(3) : null,
+        overlay: ED.text, overlay_on: ED.on };
+  try {
+    await post(`/api/clips/${c.id}/edit`, body);
+    dirty.delete(c.id); frames.delete(c.id);
+    toast(reset ? "Voltando o corte ao original… (1 a 2 min)" : "Refazendo o corte com as suas edições… (1 a 2 min)");
+    closeEditor(); loadClips(true);
+  } catch (e) { toast(e.message); }
+}
+$("#edSave").onclick = () => saveEditor(false);
+$("#edReset").onclick = () => saveEditor(true);
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#editModal").hidden) closeEditor(); });
 
 /* ------------------------------------------------------------ eventos */
 async function addLink(){
@@ -505,6 +687,7 @@ $("#clips").addEventListener("click", async e => {
   const id = +b.dataset.id, c = clips.find(x => x.id === id); if (!c) return;
   const a = b.dataset.c;
   try {
+    if (a === "edit") return openEditor(c);
     if (a === "cpt") return copy(c.title, "Título copiado");
     if (a === "cpm") return copy(c.rules?.mention || "", "@ copiado. Marque ele na postagem.");
     if (a === "cpy") return copy(c.yt_tags || "", "Tags do YouTube copiadas. Cole no campo \"Tags\" do YouTube.");
