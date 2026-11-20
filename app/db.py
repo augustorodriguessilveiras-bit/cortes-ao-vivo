@@ -53,7 +53,7 @@ with _lock:
                   "title": "TEXT", "title_idx": "INTEGER DEFAULT 0", "descr": "TEXT", "tags": "TEXT",
                   "chat_top": "TEXT", "overlay": "TEXT", "warn": "TEXT", "rendering": "INTEGER DEFAULT 0",
                   "source": "TEXT DEFAULT 'live'", "vod_id": "INTEGER",
-                  "layout": "TEXT DEFAULT 'auto'", "layout_used": "TEXT"},
+                  "layout": "TEXT DEFAULT 'auto'", "layout_used": "TEXT", "yt_tags": "TEXT"},
     }
     for table, cols in NEW.items():
         have = {r[1] for r in _conn.execute(f"PRAGMA table_info({table})")}

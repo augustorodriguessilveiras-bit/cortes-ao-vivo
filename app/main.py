@@ -90,6 +90,7 @@ class ClipIn(BaseModel):
     tags: str | None = None
     overlay: str | None = None
     status: str | None = None
+    yt_tags: str | None = None
 
 
 # ------------------------------------------------------------ estado geral
@@ -193,7 +194,12 @@ def list_clips(status: str = "", channel: str = "", limit: int = 300):
         params.append(channel)
     sql += " ORDER BY created_at DESC LIMIT ?"
     params.append(limit)
-    return db.query(sql, params)
+    rows = db.query(sql, params)
+    for c in rows:   # cortes feitos antes das tags do YouTube ganham as tags agora
+        if not c.get("yt_tags"):
+            c["yt_tags"] = meta.youtube_tags(c["channel_name"], c.get("platform") or "", c.get("cat") or "geral", c.get("subject"))
+            db.update("clips", c["id"], {"yt_tags": c["yt_tags"]})
+    return rows
 
 
 def _clip(clip_id):

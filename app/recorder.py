@@ -19,7 +19,7 @@ from pathlib import Path
 import numpy as np
 
 from . import config as C
-from . import db, meta, render, settings, sources
+from . import db, meta, render, settings, sources, transcribe
 from .chat import TwitchChat
 
 log = logging.getLogger("recorder")
@@ -334,9 +334,11 @@ class ChannelWorker(threading.Thread):
             render.make_horizontal(["-f", "concat", "-safe", "0", "-i", str(lst)], h,
                                    start - segs[0][0], job["end"] - start)
             cam = (db.query("SELECT cam FROM channels WHERE id=?", (self.id,)) or [{}])[0].get("cam")
-            recent = [r["title"] for r in db.query("SELECT title FROM clips WHERE channel_name=? ORDER BY created_at DESC LIMIT 60", (self.name,))]
+            prev = db.query("SELECT title, overlay FROM clips WHERE channel_name=? ORDER BY created_at DESC LIMIT 60", (self.name,))
             gain = max([float(x) for x in __import__("re").findall(r"áudio \+(\d+) dB", " ".join(job["reasons"]))] or [0])
-            m = meta.make_meta(self.name, self.platform, self.url, lines, gain=gain, avoid=recent)
+            speech = transcribe.transcribe(h)   # o que o streamer falou no corte
+            m = meta.make_meta(self.name, self.platform, self.url, lines, gain=gain, avoid=[r["title"] for r in prev],
+                               speech=speech, peak_rel=job["peak"] - start, avoid_hooks=[r["overlay"] for r in prev])
             clip_id = db.insert("clips", {
                 "channel_id": self.id, "channel_name": self.name, "peak_time": job["peak"],
                 "created_at": time.time(), "score": round(min(job["score"], 10.0), 1),

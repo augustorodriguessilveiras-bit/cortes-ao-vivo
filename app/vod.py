@@ -13,7 +13,7 @@ import time
 import numpy as np
 
 from . import config as C
-from . import db, meta, render, settings, sources
+from . import db, meta, render, settings, sources, transcribe
 from .recorder import clip_paths, rel, render_vertical_for
 
 log = logging.getLogger("vod")
@@ -131,8 +131,10 @@ def _process(vod_id):
         maps = ["-map", "0:v:0", "-map", f"{1 if len(inputs) > 1 else 0}:a:0?"]
         render.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", *args, "-t", f"{dur:.2f}", *maps,
                     *render.venc(), *render.AENC, "-movflags", "+faststart", str(h)], timeout=1800)
-        recent = [r["title"] for r in db.query("SELECT title FROM clips WHERE channel_name=? ORDER BY created_at DESC LIMIT 60", (name,))]
-        m = meta.make_meta(name, v["platform"], channel_url, [], gain=gain, avoid=recent)
+        prev = db.query("SELECT title, overlay FROM clips WHERE channel_name=? ORDER BY created_at DESC LIMIT 60", (name,))
+        speech = transcribe.transcribe(h)   # o que o streamer falou no corte
+        m = meta.make_meta(name, v["platform"], channel_url, [], gain=gain, avoid=[r["title"] for r in prev],
+                           speech=speech, peak_rel=t - start, avoid_hooks=[r["overlay"] for r in prev])
         clip_id = db.insert("clips", {
             "channel_id": 0, "channel_name": name, "peak_time": time.time(), "created_at": time.time(),
             "score": round(min(score, 10.0), 1),

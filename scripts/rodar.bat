@@ -45,6 +45,10 @@ if errorlevel 1 (
   exit /b
 )
 
+echo  Instalando o reconhecimento de fala ^(opcional, na 1a vez demora^)...
+%PY% -m pip install --disable-pip-version-check -q --upgrade faster-whisper >nul 2>nul
+if errorlevel 1 echo  ^(nao deu pra instalar o reconhecimento de fala; o programa funciona normal sem ele^)
+
 echo.
 echo  ==========================================
 echo   Iniciando o Cortes ao Vivo...

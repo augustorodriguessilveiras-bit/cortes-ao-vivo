@@ -351,9 +351,12 @@ function renderClips(force){
         <label>Título<input type="text" data-f="title" data-id="${id}" value="${esc(c.title)}"></label>
         <label>Descrição<textarea data-f="descr" data-id="${id}">${esc(c.descr)}</textarea></label>
         <label>Hashtags<textarea data-f="tags" data-id="${id}">${esc(c.tags)}</textarea></label>
+        <label>🏷 Tags do YouTube (cole no campo "Tags" do YouTube)<textarea data-f="yt_tags" data-id="${id}">${esc(c.yt_tags || "")}</textarea></label>
+        ${c.transcript ? `<div class="muted" style="font-size:12px">🗣 O que ele falou no corte: "${esc(c.transcript.slice(0, 300))}${c.transcript.length > 300 ? "…" : ""}"</div>` : ""}
         <div class="actions">
           <button class="small" data-c="cpt" data-id="${id}">Copiar título</button>
           <button class="small" data-c="cpa" data-id="${id}">Copiar tudo</button>
+          <button class="small" data-c="cpy" data-id="${id}">Copiar tags do YouTube</button>
           <button class="small" data-c="newt" data-id="${id}">🔄 Outro título</button>
         </div>
       </details>
@@ -413,6 +416,7 @@ $("#clips").addEventListener("click", async e => {
   const a = b.dataset.c;
   try {
     if (a === "cpt") return copy(c.title, "Título copiado");
+    if (a === "cpy") return copy(c.yt_tags || "", "Tags do YouTube copiadas. Cole no campo \"Tags\" do YouTube.");
     if (a === "cpa") return copy(`${c.title}\n\n${c.descr}\n\n${c.tags}`, "Título, descrição e hashtags copiados");
     if (a === "newt"){ const r = await post(`/api/clips/${id}/newtitle`); c.title = r.title; openMeta.add(id); renderClips(true); return; }
     if (a === "t2o"){ c.overlay = c.title; const ta = document.getElementById("ov" + id); if (ta) ta.value = c.title; await post(`/api/clips/${id}`, { overlay: c.title }); toast("Título copiado pro texto. Clique em \"Aplicar no vídeo\"."); return; }

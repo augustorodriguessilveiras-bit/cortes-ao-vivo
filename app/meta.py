@@ -153,14 +153,117 @@ def top_message(lines):
     return first[best]
 
 
-def make_meta(channel, platform, url, lines=(), manual=False, gain=0, avoid=()):
+# ------------------------------------------------------------ texto da faixa dentro do vídeo
+# Estilo "gancho" de corte de TikTok. Diferente do título, pra não ficar tudo igual.
+HOOKS = {
+    "engracado": ["O {N} NÃO ESPERAVA POR ESSA NO GTA VI KKKKKKKKKK", "O CHAT NÃO AGUENTOU ESSA DO {N} KKKKKKK",
+                  "SÓ O {N} PRA PASSAR ESSA VERGONHA NO GTA 6 KKKKK", "O {N} TENTOU SER SÉRIO MAS NÃO DEU KKKKKKK",
+                  "ATÉ O {N} RIU DELE MESMO NESSA KKKKKKKK", "O GTA 6 ZOOU O {N} DE UM JEITO QUE NINGUÉM ESPERAVA KKKKK"],
+    "fail": ["O {N} ACHOU QUE IA DAR CERTO... SÓ ACHOU 💀", "ERA SÓ NÃO FAZER ISSO, {N} 😭", "O {N} TINHA TUDO NA MÃO E JOGOU FORA 💀",
+             "NINGUÉM CONTOU PRO {N} QUE ISSO IA DAR ERRADO 😭", "O {N} SE ARREPENDEU NA HORA 💀"],
+    "epico": ["O {N} FEZ ISSO NO GTA VI E O CHAT FOI À LOUCURA 🔥", "PRESTA ATENÇÃO NO QUE O {N} FEZ AQUI 🔥",
+              "ESSA JOGADA DO {N} MERECIA PRÊMIO 🏆", "O {N} MOSTROU QUEM MANDA NO GTA VI 🔥"],
+    "susto": ["O {N} NÃO ESTAVA PRONTO PRA ISSO 😱", "PRESTA ATENÇÃO NA REAÇÃO DO {N} 😳", "O {N} QUASE CAIU DA CADEIRA 😱",
+              "NINGUÉM ESPERAVA ISSO, NEM O {N} 😨"],
+    "policia": ["O {N} RESOLVEU DESAFIAR A POLÍCIA DO GTA VI 🚨", "A POLÍCIA NÃO DEU NENHUMA CHANCE PRO {N} 🚓",
+                "O {N} VIROU O MAIS PROCURADO EM 10 SEGUNDOS 🚨"],
+    "geral": ["ESPERA ATÉ O FINAL 😳", "O {N} NÃO ESPERAVA POR ISSO NO GTA VI 😳", "OLHA O QUE ACONTECEU COM O {N} NO GTA VI 👀",
+              "O FINAL DESSE CORTE DO {N} É INSANO 🤯", "O {N} ESTAVA TRANQUILO NO GTA VI ATÉ QUE...", "ISSO SÓ ACONTECE NA LIVE DO {N} 😂",
+              "O GTA VI RESOLVEU TESTAR A PACIÊNCIA DO {N}", "VOCÊ NÃO VAI ACREDITAR NO QUE O {N} VIU NO GTA VI 😳",
+              "A REAÇÃO DO {N} NO FINAL É TUDO 😂", "O {N} DESCOBRIU UMA COISA NO GTA VI E SURTOU 🤯"],
+}
+LOUD_HOOKS = ["O {N} GRITOU TANTO QUE ESTOUROU O ÁUDIO 🔊", "PREPARA O OUVIDO: O {N} SURTOU AQUI 😱",
+              "O GRITO DO {N} NO FINAL É REAL KKKKK", "NUNCA VI O {N} GRITAR ASSIM NO GTA VI 😱"]
+SUBJECT_HOOKS = ["O {N} FOI {ACT} NO GTA VI E NÃO ESPERAVA POR ISSO KKKKKKKKKK", "O {N} SÓ QUERIA {ACT} NO GTA VI... 😭",
+                 "O {N} TENTOU {ACT} E OLHA NO QUE DEU 😳", "NUNCA DEIXE O {N} {ACT} NO GTA VI 💀",
+                 "O {N} RESOLVEU {ACT} E O GTA VI NÃO PERDOOU 💀", "{ART} NO GTA VI E A REAÇÃO DO {N} 😂"]
+
+
+def quote_near(segments, peak_rel):
+    """Uma frase que o streamer falou perto do momento forte (boa pra virar o texto do vídeo)."""
+    if not segments or peak_rel is None:
+        return ""
+    best = None
+    for st, en, text in segments:
+        t = re.sub(r"\s+", " ", text).strip(" .,-")
+        if not (8 <= len(t) <= 70) or len(t.split()) < 2:
+            continue
+        dist = 0 if st - 3 <= peak_rel <= en + 3 else min(abs(st - peak_rel), abs(en - peak_rel))
+        if dist <= 12 and (best is None or dist < best[0]):
+            best = (dist, t)
+    return best[1] if best else ""
+
+
+def hook_options(cat, name, subject, gain=0, quote=""):
+    """Textos possíveis pra faixa. Os mais ligados ao corte vêm primeiro."""
+    N = name.upper()
+    first, rest = [], []
+    if quote:
+        q = quote.upper().rstrip("!?. ")
+        first += [f'O {N}: "{q}"', f'"{q}" — O {N} NO GTA VI']
+    if subject:
+        art, act = THINGS[subject]
+        first += [h.replace("{N}", N).replace("{ACT}", act).replace("{ART}", art) for h in SUBJECT_HOOKS]
+    if gain >= 18:
+        rest += [h.replace("{N}", N) for h in LOUD_HOOKS]
+    rest += [h.replace("{N}", N) for h in HOOKS.get(cat, [])]
+    if cat != "geral":
+        rest += [h.replace("{N}", N) for h in HOOKS["geral"]]
+    return first, rest
+
+
+def pick_hook(first, rest, avoid=()):
+    avoid = set(avoid)
+    f = [h for h in first if h not in avoid]
+    if f:
+        return f[0] if f[0].startswith(("O ", '"')) and '"' in f[0] else random.choice(f)
+    r = [h for h in rest if h not in avoid]
+    return random.choice(r or rest or first or [""])
+
+
+# ------------------------------------------------------------ tags do YouTube
+YT_CAT = {"engracado": ["gta 6 engraçado", "momentos engraçados gta 6", "gta 6 comédia"],
+          "fail": ["gta 6 fail", "gta 6 fails", "wasted gta 6"],
+          "epico": ["gta 6 jogada insana", "gta 6 épico", "melhores momentos gta 6"],
+          "susto": ["gta 6 susto", "reação gta 6", "gta 6 reação"],
+          "policia": ["gta 6 perseguição", "gta 6 polícia", "gta 6 fuga da polícia"],
+          "geral": ["melhores momentos gta 6", "gta 6 momentos"]}
+
+
+def youtube_tags(channel, platform, cat, subject=None):
+    """Tags pro campo "Tags" do YouTube (separadas por vírgula, até 500 caracteres)."""
+    n = channel.lower()
+    plat = PLAT.get(platform, "").lower()
+    tags = ["gta 6", "gta vi", "gta 6 gameplay", "gta 6 brasil", "gta 6 ao vivo", "grand theft auto 6",
+            n, f"{n} gta 6", f"{n} gta vi", f"cortes {n}", f"cortes do {n}", f"{n} cortes"]
+    tags += YT_CAT.get(cat, YT_CAT["geral"])
+    if subject:
+        word = THINGS[subject][0].split(" ", 1)[-1].lower()
+        tags += [f"{word} gta 6", f"gta 6 {word}"]
+    if plat:
+        tags += [f"{n} {plat}", f"live {plat}"]
+    tags += ["gta 6 shorts", "shorts gta 6", "cortes de live", "gta 6 cortes"]
+    out, size = [], 0
+    for t in tags:
+        if t not in out and size + len(t) + 2 <= 480:
+            out.append(t)
+            size += len(t) + 2
+    return ", ".join(out)
+
+
+def make_meta(channel, platform, url, lines=(), manual=False, gain=0, avoid=(), speech=(), peak_rel=None, avoid_hooks=()):
+    """lines: mensagens do chat · speech: o que o streamer falou no corte [(inicio, fim, texto)]"""
     lines = list(lines)
+    speech = list(speech or [])
+    spoken = [t for _, _, t in speech]
     cat, best = "geral", 1
     for k, rx in _RE.items():
         n = sum(1 for l in lines if rx.search(l))
         if n > best:
             cat, best = k, n
-    subject = find_subject(lines)
+    # o que o streamer fala perto do momento forte pesa mais que o resto
+    near = [t for st, en, t in speech if peak_rel is not None and st - 4 <= peak_rel <= en + 4]
+    subject = find_subject(lines + spoken + near * 3)
     titles = title_list(cat, channel, subject, gain)
     n_subject = len(title_list(cat, channel, subject)) - len(title_list(cat, channel, None)) if subject else 0
     title = pick_title(titles, max(0, n_subject), avoid)
@@ -177,8 +280,12 @@ def make_meta(channel, platform, url, lines=(), manual=False, gain=0, avoid=()):
         t = t if t.startswith("#") else "#" + t
         if t not in tags:
             tags.append(t)
+    quote = quote_near(speech, peak_rel)
+    first, rest = hook_options(cat, channel, subject, gain, quote)
+    hook = pick_hook(first, rest, set(avoid_hooks) | {title})
     return {
         "cat": cat, "subject": subject, "title": title, "title_idx": titles.index(title), "descr": desc,
-        "tags": " ".join(tags), "chat_top": chat_top,
-        "overlay": title if settings.get("ov_on") else "",
+        "tags": " ".join(tags), "chat_top": chat_top, "yt_tags": youtube_tags(channel, platform, cat, subject),
+        "overlay": hook if settings.get("ov_on") else "",
+        "transcript": " ".join(spoken)[:2000] or None,
     }
