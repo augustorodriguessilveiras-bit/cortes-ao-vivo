@@ -19,7 +19,7 @@ from pathlib import Path
 import numpy as np
 
 from . import config as C
-from . import db, meta, render, settings, sources, transcribe
+from . import db, meta, render, rules, settings, sources, transcribe
 from .chat import TwitchChat
 
 log = logging.getLogger("recorder")
@@ -47,11 +47,18 @@ def render_vertical_for(clip_id):
     thumb = C.CLIPS_DIR / (c["thumb"] or c["file_h"].replace("_h.mp4", ".jpg"))
     tmp = v.with_name(v.stem + ".novo.mp4")
     try:
+        rule = rules.for_channel(c["channel_name"])
+        wm = rule.get("watermark") if rule else None
         on = c.get("overlay_on") is None or bool(c.get("overlay_on"))
         caption = (c["overlay"] or "") if on else ""
         used = render.make_vertical(h, tmp, thumb, cam=c["cam"], caption=caption,
-                                    cap_secs=settings.get("ov_secs"), layout=c.get("layout") or "auto")
+                                    cap_secs=settings.get("ov_secs"), layout=c.get("layout") or "auto", watermark=wm)
         tmp.replace(v)
+        if wm and not c.get("file_hw"):
+            # horizontal pra baixar, com a marca d'água (o original fica limpo pra refazer o vertical)
+            hw = h.with_name(h.name.replace("_h.mp4", "_hw.mp4"))
+            render.add_watermark(h, hw, wm)
+            db.update("clips", clip_id, {"file_hw": rel(hw)})
         db.update("clips", clip_id, {"file_v": rel(v), "thumb": rel(thumb), "rendering": 0,
                                      "created_at": time.time(), "layout_used": used, "overlay_applied": caption})
         if used == "full" and (c.get("layout") or "auto") == "auto":

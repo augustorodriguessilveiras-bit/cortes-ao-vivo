@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import config as C
-from . import db, meta, render, settings, sources, version, vod
+from . import db, meta, render, rules, settings, sources, version, vod
 from .recorder import CLIP_POOL, ChannelWorker, render_vertical_for
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(message)s", datefmt="%H:%M:%S")
@@ -200,7 +200,8 @@ def list_clips(status: str = "", channel: str = "", limit: int = 300):
     sql += " ORDER BY created_at DESC LIMIT ?"
     params.append(limit)
     rows = db.query(sql, params)
-    for c in rows:   # cortes feitos antes das tags do YouTube ganham as tags agora
+    for c in rows:
+        c["rules"] = rules.public(c["channel_name"])   # cortes feitos antes das tags do YouTube ganham as tags agora
         if not c.get("yt_tags"):
             c["yt_tags"] = meta.youtube_tags(c["channel_name"], c.get("platform") or "", c.get("cat") or "geral", c.get("subject"))
             db.update("clips", c["id"], {"yt_tags": c["yt_tags"]})
@@ -228,9 +229,10 @@ def new_title(clip_id: int):
     c = _clip(clip_id)
     import re as _re
     gain = max([float(x) for x in _re.findall(r"áudio \+(\d+) dB", c["reasons"] or "")] or [0])
-    titles = meta.title_list(c["cat"] or "geral", c["channel_name"], c["subject"], gain)
-    n_subject = (len(meta.title_list(c["cat"] or "geral", c["channel_name"], c["subject"]))
-                 - len(meta.title_list(c["cat"] or "geral", c["channel_name"], None))) if c["subject"] else 0
+    disp = rules.display(c["channel_name"])
+    titles = [rules.title_with_tag(c["channel_name"], t) for t in meta.title_list(c["cat"] or "geral", disp, c["subject"], gain)]
+    n_subject = (len(meta.title_list(c["cat"] or "geral", disp, c["subject"]))
+                 - len(meta.title_list(c["cat"] or "geral", disp, None))) if c["subject"] else 0
     recent = [r["title"] for r in db.query("SELECT title FROM clips WHERE channel_name=? AND id<>? ORDER BY created_at DESC LIMIT 60",
                                            (c["channel_name"], clip_id))]
     title = meta.pick_title(titles, max(0, n_subject), recent, current=c["title"])
@@ -271,8 +273,9 @@ def new_hook(clip_id: int):
     import random
     c = _clip(clip_id)
     subject = c["subject"] or meta.find_subject([c["transcript"] or ""] * 2)
-    first, rest = meta.hook_options(c["cat"] or "geral", c["channel_name"], subject, _gain(c))
-    quotes = meta.transcript_quotes(c["transcript"], c["channel_name"])
+    disp = rules.display(c["channel_name"])
+    first, rest = meta.hook_options(c["cat"] or "geral", disp, subject, _gain(c))
+    quotes = meta.transcript_quotes(c["transcript"], disp)
     recent = {r["overlay"] for r in db.query("SELECT overlay FROM clips WHERE channel_name=? AND id<>? ORDER BY created_at DESC LIMIT 60",
                                              (c["channel_name"], clip_id))}
     recent.add(c["overlay"])

@@ -116,6 +116,11 @@ Instale nos dois PCs do mesmo jeito: Python, extrair o zip e `INICIAR.bat`.
 
 ---
 
+## Regras por streamer (campeonatos)
+Alguns canais têm regras próprias, aplicadas sozinhas só nos cortes deles (arquivo `app/rules.py`):
+- **Renato Vicente** (`kick.com/orenatovicente`): marca d'água `kick.com/orenatovicente` no corte inteiro (vertical e horizontal),
+  `#orenatovicente` no título, `@orenatovicente` na descrição pra marcar ao postar, e sem hashtags genéricas (#fyp, #viral).
+
 ## Ajustes (arquivo `.env`)
 | Opção | O que faz |
 |---|---|

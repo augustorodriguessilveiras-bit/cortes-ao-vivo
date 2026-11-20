@@ -4,7 +4,7 @@ import re
 import unicodedata
 from collections import Counter
 
-from . import settings
+from . import rules, settings
 
 # Tipo de momento, reconhecido pelas mensagens do chat logo depois dele
 CATS = {
@@ -129,7 +129,8 @@ def title_list(cat, name, subject, gain=0):
 
 def pick_title(titles, n_subject, avoid=(), current=None):
     """Escolhe um título ainda não usado (de preferência ligado à cena), sorteando entre os que sobraram."""
-    avoid = set(avoid) | ({current} if current else set())
+    strip = lambda t: re.sub(r"\s+#\w+$", "", (t or "").strip())
+    avoid = {strip(t) for t in avoid} | ({strip(current)} if current else set())
     fresh_subject = [t for t in titles[:n_subject] if t not in avoid]
     fresh = [t for t in titles if t not in avoid]
     pool = fresh_subject or fresh or [t for t in titles if t != current] or titles
@@ -250,7 +251,9 @@ def youtube_tags(channel, platform, cat, subject=None):
     """Tags pro campo "Tags" do YouTube (separadas por vírgula, até 500 caracteres)."""
     n = channel.lower()
     plat = PLAT.get(platform, "").lower()
-    tags = ["gta 6", "gta vi", "gta 6 gameplay", "gta 6 brasil", "gta 6 ao vivo", "grand theft auto 6",
+    r = rules.for_channel(channel)
+    tags = list(r.get("yt_tags", [])) if r else []
+    tags += ["gta 6", "gta vi", "gta 6 gameplay", "gta 6 brasil", "gta 6 ao vivo", "grand theft auto 6",
             n, f"{n} gta 6", f"{n} gta vi", f"cortes {n}", f"cortes do {n}", f"{n} cortes"]
     tags += YT_CAT.get(cat, YT_CAT["geral"])
     if subject:
@@ -280,27 +283,35 @@ def make_meta(channel, platform, url, lines=(), manual=False, gain=0, avoid=(), 
     # o que o streamer fala perto do momento forte pesa mais que o resto
     near = [t for st, en, t in speech if peak_rel is not None and st - 4 <= peak_rel <= en + 4]
     subject = find_subject(lines + spoken + near * 3)
-    titles = title_list(cat, channel, subject, gain)
-    n_subject = len(title_list(cat, channel, subject)) - len(title_list(cat, channel, None)) if subject else 0
-    title = pick_title(titles, max(0, n_subject), avoid)
+    rule = rules.for_channel(channel)
+    disp = rules.display(channel)            # ex: "orenatovicente" aparece como "Renato" nos textos
+    titles = title_list(cat, disp, subject, gain)
+    n_subject = len(title_list(cat, disp, subject)) - len(title_list(cat, disp, None)) if subject else 0
+    raw_title = pick_title(titles, max(0, n_subject), avoid)
+    title = rules.title_with_tag(channel, raw_title)
     chat_top = top_message(lines)
-    Nn = channel[:1].upper() + channel[1:]
+    Nn = disp[:1].upper() + disp[1:]
     plat = PLAT.get(platform, "live")
     desc = f"{CATS[cat]['lead']} do {Nn} ao vivo no GTA 6 🎮"
     if chat_top:
         desc += f'\n💬 O chat: "{chat_top}"'
     desc += f"\n🔴 Acompanhe o {Nn} na {plat}: {url}"
+    if rule and rule.get("mention"):
+        desc += f"\n📌 {rule['mention']}"
     name_tag = "#" + re.sub(r"[^a-z0-9_]", "", channel.lower())
     tags = []
-    for t in settings.get("tags").split() + [name_tag, name_tag + "cortes", "#" + plat.lower()] + CATS[cat]["tags"]:
+    base = (rule.get("hashtags", []) if rule else []) + settings.get("tags").split() \
+        + [name_tag, name_tag + "cortes", "#" + plat.lower()] + CATS[cat]["tags"]
+    drop = {t.lower() for t in (rule.get("drop_hashtags", []) if rule else [])}
+    for t in base:
         t = t if t.startswith("#") else "#" + t
-        if t not in tags:
+        if t not in tags and t.lower() not in drop:
             tags.append(t)
     quote = quote_near(speech, peak_rel)
-    first, rest = hook_options(cat, channel, subject, gain, quote)
+    first, rest = hook_options(cat, disp, subject, gain, quote)
     hook = pick_hook(first, rest, set(avoid_hooks) | {title})
     return {
-        "cat": cat, "subject": subject, "title": title, "title_idx": titles.index(title), "descr": desc,
+        "cat": cat, "subject": subject, "title": title, "title_idx": titles.index(raw_title), "descr": desc,
         "tags": " ".join(tags), "chat_top": chat_top, "yt_tags": youtube_tags(channel, platform, cat, subject),
         "overlay": hook if settings.get("ov_on") else "",
         "transcript": " ".join(spoken)[:2000] or None,
