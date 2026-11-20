@@ -56,7 +56,7 @@ with _lock:
                   "layout": "TEXT DEFAULT 'auto'", "layout_used": "TEXT", "yt_tags": "TEXT",
                   "overlay_on": "INTEGER DEFAULT 1", "overlay_applied": "TEXT", "file_hw": "TEXT",
                   "trim_start": "REAL", "trim_end": "REAL", "cap_start": "REAL", "cap_end": "REAL",
-                  "cap_y": "REAL", "wm_x": "REAL", "wm_y": "REAL"},
+                  "cap_y": "REAL", "wm_x": "REAL", "wm_y": "REAL", "audio_info": "TEXT"},
     }
     for table, cols in NEW.items():
         have = {r[1] for r in _conn.execute(f"PRAGMA table_info({table})")}

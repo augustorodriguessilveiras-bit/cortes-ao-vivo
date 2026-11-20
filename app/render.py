@@ -64,6 +64,40 @@ def venc():
 AENC = ["-c:a", "aac", "-b:a", "192k"]
 
 
+# ------------------------------------------------------------ volume do áudio
+def audio_fix(src, ts=0.0, dur=None, mode="auto"):
+    """
+    Decide o que fazer com o volume do corte:
+      - áudio bom: não mexe (som original da live)
+      - muito baixo: aumenta até um volume normal, sem estourar
+      - alto demais / batendo no limite: segura só os picos pra não sair estourado
+    Retorna (lista de filtros de áudio do ffmpeg, explicação).
+    """
+    if mode == "off":
+        return [], "áudio original"
+    try:
+        seek = ["-ss", f"{ts:.2f}"] + (["-t", f"{dur:.2f}"] if dur else [])
+        r = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", *seek, "-i", str(src), "-vn",
+                            "-af", "loudnorm=print_format=json", "-f", "null", "-"],
+                           capture_output=True, text=True, creationflags=NO_WINDOW, timeout=300)
+        j = json.loads(r.stderr[r.stderr.rindex("{"):r.stderr.rindex("}") + 1])
+        lufs, peak = float(j["input_i"]), float(j["input_tp"])
+    except Exception:
+        return [], "áudio original"
+    if lufs == float("-inf") or lufs < -60:
+        return [], "áudio original"
+    limiter = "alimiter=limit=0.89:attack=5:release=60:level=0"   # nada passa de -1 dB
+    if lufs < -28:                                   # muito baixo mesmo: sobe pra um volume normal (no máximo +10 dB)
+        gain = min(10.0, -18.0 - lufs)
+        return [f"volume={gain:.1f}dB", limiter], f"áudio baixo: aumentado {gain:.0f} dB"
+    if lufs > -10:                                   # alto demais: abaixa um pouco
+        gain = -14.0 - lufs
+        return [f"volume={gain:.1f}dB", limiter], f"áudio muito alto: abaixado {abs(gain):.0f} dB"
+    if peak > -1.0:                                  # volume bom, mas os gritos batem no limite
+        return [limiter], "picos do áudio segurados pra não estourar"
+    return [], "áudio original"
+
+
 # ------------------------------------------------------------ utilidades
 def probe(path):
     r = run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
@@ -168,7 +202,7 @@ def watermark_png(text, out, width, frac=0.034):
     return w, h
 
 
-def horizontal_final(src, out, text=None, trim=None):
+def horizontal_final(src, out, text=None, trim=None, audio_mode="auto"):
     """Horizontal pra baixar: com o corte manual (trim) e a marca d'água, se tiver."""
     vw, vh, full = probe(src)
     ts, te = (trim or (0, full))
@@ -186,8 +220,10 @@ def horizontal_final(src, out, text=None, trim=None):
             flt = f"[0:v][1:v]overlay=(W-w)/2:{y}:shortest=1[v]"
         else:
             flt = "[0:v]null[v]"
+        afx, _ = audio_fix(src, ts, dur, audio_mode)
         run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", *inputs, "-filter_complex", flt,
-             "-map", "[v]", "-map", "0:a:0?", *venc(), *AENC, "-movflags", "+faststart", str(out)], timeout=1800)
+             "-map", "[v]", "-map", "0:a:0?", *venc(), *(["-af", ",".join(afx)] if afx else []), *AENC,
+             "-movflags", "+faststart", str(out)], timeout=1800)
     finally:
         png.unlink(missing_ok=True)
 
@@ -308,7 +344,7 @@ def vertical_filter(vw, vh, layout, cam, focus_x, cap_h, cap_secs, dur=0, wm_idx
 
 
 def make_vertical(h_path, out, thumb, cam=None, caption="", cap_secs=10, layout="auto", watermark=None,
-                  trim=None, cap_win=None, cap_y=None, wm_pos=None):
+                  trim=None, cap_win=None, cap_y=None, wm_pos=None, audio_mode="auto"):
     """
     Monta o vertical. layout: 'auto' (decide sozinho), 'cam', 'full' ou 'game'. Retorna o formato usado.
     trim: (início, fim) em segundos dentro do corte · cap_win: (aparece, some) do texto, contando do início do corte
@@ -343,7 +379,9 @@ def make_vertical(h_path, out, thumb, cam=None, caption="", cap_secs=10, layout=
         wm_idx, wm_y, wm_xc = (2 if cap_h else 1), int(H * wy) - wm_h // 2, W * wx
     flt = vertical_filter(vw, vh, layout, cam, focus_x, cap_h, cap_secs, dur, wm_idx, wm_y,
                           cap_win=cap_win, cap_yc=(cap_y * H if cap_y is not None else None), wm_xc=wm_xc)
-    afade = ["-af", f"afade=t=out:st={max(0.0, dur - 0.6):.2f}:d=0.6"] if dur > 3 else []
+    afx, ainfo = audio_fix(h_path, ts, dur, audio_mode)
+    afx += [f"afade=t=out:st={max(0.0, dur - 0.6):.2f}:d=0.6"] if dur > 3 else []
+    afade = ["-af", ",".join(afx)] if afx else []
     inputs = ["-ss", f"{ts:.2f}", "-t", f"{dur:.2f}", "-i", str(h_path)]
     if cap_h:
         inputs += ["-loop", "1", "-t", f"{dur:.2f}", "-i", str(cap_png)]
@@ -358,4 +396,5 @@ def make_vertical(h_path, out, thumb, cam=None, caption="", cap_secs=10, layout=
     finally:
         cap_png.unlink(missing_ok=True)
         wm_png.unlink(missing_ok=True)
+    make_vertical.last_audio = ainfo
     return layout

@@ -12,6 +12,7 @@ DEFAULTS = {
     "ov_secs": 10,                     # por quantos segundos (41 = vídeo todo)
     "tags": "#gta6 #gtavi #gta #gta6brasil #cortes #cortesdelive #fyp #viral",
     "vod_max": 15,                     # máximo de cortes por VOD
+    "audio_mode": "auto",              # auto: só mexe se estiver muito baixo ou estourando · off: nunca mexe
 }
 _lock = threading.Lock()
 
@@ -39,5 +40,7 @@ def update(changes: dict):
         for k, v in changes.items():
             if k in DEFAULTS:
                 data[k] = type(DEFAULTS[k])(v) if not isinstance(DEFAULTS[k], bool) else bool(v)
+        if data.get("audio_mode") not in ("auto", "off"):
+            data["audio_mode"] = "auto"
         C.SETTINGS_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
         return get_all()

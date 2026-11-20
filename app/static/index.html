@@ -181,6 +181,7 @@ details.meta[open] summary{margin-bottom:6px}
     <label>Máx. cortes por VOD <input type="range" id="vod_max" min="3" max="40" step="1"><output></output></label>
     <label><input type="checkbox" id="ov_on"> Título dentro do vídeo</label>
     <label>Texto aparece por <input type="range" id="ov_secs" min="3" max="41" step="1"><output></output></label>
+    <label>Volume do áudio <select id="audio_mode"><option value="auto">Automático (só mexe se estiver muito baixo ou estourando)</option><option value="off">Original da live (nunca mexer)</option></select></label>
     <label class="wide">Hashtags padrão <input type="text" id="tags"></label>
   </div>
   <p class="muted">Muito corte ruim? Aumente a nota mínima. Poucos cortes? Diminua.</p>
@@ -405,11 +406,11 @@ let settingsBound = false, saveSet = null;
 function bindSettings(){
   if (settingsBound) return; settingsBound = true;
   const fmt = { min_score: v => (+v).toFixed(1), dur: v => `${v}s (${Math.round(v * 2 / 3)}s antes do momento, ${v - Math.round(v * 2 / 3)}s depois)`, vod_max: v => v, ov_secs: v => +v > 40 ? "o vídeo todo" : v + "s" };
-  for (const id of ["min_score", "dur", "vod_max", "ov_secs", "ov_on", "tags"]){
+  for (const id of ["min_score", "dur", "vod_max", "ov_secs", "ov_on", "tags", "audio_mode"]){
     const el = $("#" + id), out = el.parentElement.querySelector("output"), val = ST.settings[id];
     if (el.type === "checkbox") el.checked = !!val; else el.value = val;
     if (out) out.textContent = fmt[id](val);
-    el.addEventListener(el.type === "checkbox" ? "change" : "input", () => {
+    el.addEventListener(el.type === "checkbox" || el.tagName === "SELECT" ? "change" : "input", () => {
       const v = el.type === "checkbox" ? el.checked : el.type === "range" ? +el.value : el.value;
       if (out) out.textContent = fmt[id](v);
       ST.settings[id] = v; clearTimeout(saveSet);
@@ -445,6 +446,7 @@ function renderClips(force){
         <span>👉 Ao postar, marque <b>${esc(c.rules.mention)}</b> <button class="small" data-c="cpm" data-id="${id}">Copiar @</button></span></div>` : ""}
       <div class="reasons">${esc(c.reasons)}</div>
       ${c.layout_used ? `<div class="fmt">📐 Formato: ${{ cam: "câmera em cima + gameplay", full: "tela cheia (full cam)", game: "só gameplay" }[c.layout_used] || c.layout_used}${(c.layout || "auto") === "auto" ? " (automático)" : ""}</div>` : ""}
+      ${c.audio_info ? `<div class="fmt">🔊 ${esc(c.audio_info)}</div>` : ""}
       ${c.warn ? `<div class="warn">⚠ ${esc(c.warn)}</div>` : ""}
       ${c.chat_top ? `<div class="chatq">💬 "${esc(c.chat_top)}"</div>` : ""}
       ${c.rendering ? "" : `
