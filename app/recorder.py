@@ -99,8 +99,9 @@ class ChannelWorker(threading.Thread):
         if self.status != "gravando":
             return False
         now = time.time()
+        dur = settings.get_all()["dur"]
         with self._lock:
-            self.jobs.append({"start": now - 45, "end": now + 5, "score": 10.0,
+            self.jobs.append({"start": now - (dur - 5), "end": now + 5, "score": 10.0,
                               "reasons": ["corte manual"], "peak": now})
         return True
 

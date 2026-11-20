@@ -208,7 +208,7 @@ def detect_layout(h_path, cam):
     return default
 
 
-def vertical_filter(vw, vh, layout, cam, focus_x, cap_h, cap_secs):
+def vertical_filter(vw, vh, layout, cam, focus_x, cap_h, cap_secs, dur=0):
     """Monta o filtro do ffmpeg pro formato escolhido, com a faixa do título se tiver."""
     if layout == "full":
         # tela cheia: recorte vertical da imagem inteira, centrado no streamer
@@ -241,9 +241,11 @@ def vertical_filter(vw, vh, layout, cam, focus_x, cap_h, cap_secs):
         y = (H - fit_h) // 2 - cap_h // 2
     if cap_h:
         fade = f",fade=t=out:st={max(0.1, cap_secs - 0.4):.2f}:d=0.4:alpha=1" if cap_secs < 1e5 else ""
-        f += f";[1:v]format=rgba{fade}[cap];[base][cap]overlay=0:{max(0, y)}:shortest=1[v]"
+        f += f";[1:v]format=rgba{fade}[cap];[base][cap]overlay=0:{max(0, y)}:shortest=1[v0]"
     else:
-        f += ";[base]null[v]"
+        f += ";[base]null[v0]"
+    # escurece suavemente no último meio segundo, pro corte não acabar do nada
+    f += f";[v0]fade=t=out:st={max(0.0, dur - 0.6):.2f}:d=0.6[v]" if dur > 3 else ";[v0]null[v]"
     return f
 
 
@@ -262,13 +264,14 @@ def make_vertical(h_path, out, thumb, cam=None, caption="", cap_secs=10, layout=
     cap_png = Path(out).with_suffix(".faixa.png")
     cap_h = caption_png(caption, cap_png) if caption else 0
     cap_secs = 1e9 if cap_secs > 40 else cap_secs
-    flt = vertical_filter(vw, vh, layout, cam, focus_x, cap_h, cap_secs)
+    flt = vertical_filter(vw, vh, layout, cam, focus_x, cap_h, cap_secs, dur)
+    afade = ["-af", f"afade=t=out:st={max(0.0, dur - 0.6):.2f}:d=0.6"] if dur > 3 else []
     inputs = ["-i", str(h_path)]
     if cap_h:
         inputs += ["-loop", "1", "-t", f"{dur:.2f}", "-i", str(cap_png)]
     try:
         run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", *inputs, "-filter_complex", flt,
-             "-map", "[v]", "-map", "0:a:0?", *venc(), "-c:a", "copy", "-movflags", "+faststart", str(out)],
+             "-map", "[v]", "-map", "0:a:0?", *venc(), *afade, *AENC, "-movflags", "+faststart", str(out)],
             timeout=1800)
         frame_jpg(out, thumb, t=1.5 if cap_h else dur * 0.6, width=360)
     finally:

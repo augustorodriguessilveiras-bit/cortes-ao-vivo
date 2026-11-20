@@ -104,6 +104,9 @@ details.meta[open] summary{margin-bottom:6px}
 .layouts label{display:flex;align-items:center;gap:6px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:7px 11px;font-size:13.5px;cursor:pointer}
 .layouts label:has(input:checked){border-color:var(--accent);color:var(--text)}
 .fmt{font-size:12px;color:var(--info)}
+.ovedit{display:flex;flex-direction:column;gap:6px;background:var(--bg);border:1px solid var(--accent);border-radius:10px;padding:9px}
+.ovedit label{font-size:12.5px;color:var(--accent2);font-weight:600}
+.ovedit textarea{width:100%;padding:8px 10px;font-size:14px;font-weight:700;text-transform:uppercase;border-radius:8px;resize:vertical;background:var(--panel)}
 #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);padding:10px 16px;border-radius:10px;opacity:0;transition:opacity .3s;pointer-events:none;max-width:90vw;z-index:60}
 #toast.show{opacity:1}
 </style>
@@ -138,8 +141,7 @@ details.meta[open] summary{margin-bottom:6px}
   <h2>Ajustes</h2>
   <div class="settings">
     <label>Nota mínima p/ cortar <input type="range" id="min_score" min="3" max="9.5" step="0.5"><output></output></label>
-    <label>Segundos antes <input type="range" id="before" min="10" max="45" step="1"><output></output></label>
-    <label>Segundos depois <input type="range" id="after" min="5" max="25" step="1"><output></output></label>
+    <label>Duração do corte <input type="range" id="dur" min="20" max="90" step="5"><output></output></label>
     <label>Máx. cortes por VOD <input type="range" id="vod_max" min="3" max="40" step="1"><output></output></label>
     <label><input type="checkbox" id="ov_on"> Título dentro do vídeo</label>
     <label>Texto aparece por <input type="range" id="ov_secs" min="3" max="41" step="1"><output></output></label>
@@ -295,8 +297,8 @@ function renderLives(){
 let settingsBound = false, saveSet = null;
 function bindSettings(){
   if (settingsBound) return; settingsBound = true;
-  const fmt = { min_score: v => (+v).toFixed(1), before: v => v + "s", after: v => v + "s", vod_max: v => v, ov_secs: v => +v > 40 ? "o vídeo todo" : v + "s" };
-  for (const id of ["min_score", "before", "after", "vod_max", "ov_secs", "ov_on", "tags"]){
+  const fmt = { min_score: v => (+v).toFixed(1), dur: v => `${v}s (${Math.round(v * 2 / 3)}s antes do momento, ${v - Math.round(v * 2 / 3)}s depois)`, vod_max: v => v, ov_secs: v => +v > 40 ? "o vídeo todo" : v + "s" };
+  for (const id of ["min_score", "dur", "vod_max", "ov_secs", "ov_on", "tags"]){
     const el = $("#" + id), out = el.parentElement.querySelector("output"), val = ST.settings[id];
     if (el.type === "checkbox") el.checked = !!val; else el.value = val;
     if (out) out.textContent = fmt[id](val);
@@ -311,6 +313,7 @@ function bindSettings(){
 
 /* ------------------------------------------------------------ cortes */
 const openMeta = new Set();
+const dirty = new Map();   // edições ainda não salvas (não podem ser apagadas pelo painel se atualizando)
 let confirmDel = null, clipsKey = "";
 function renderClips(force){
   const el = $("#clips");
@@ -334,18 +337,24 @@ function renderClips(force){
       ${c.warn ? `<div class="warn">⚠ ${esc(c.warn)}</div>` : ""}
       ${c.chat_top ? `<div class="chatq">💬 "${esc(c.chat_top)}"</div>` : ""}
       ${c.rendering ? "" : `
+      <div class="ovedit">
+        <label for="ov${id}">✏️ Texto que aparece no vídeo (faixa branca)</label>
+        <textarea id="ov${id}" data-f="overlay" data-id="${id}" rows="3" placeholder="Escreva o texto. Vazio = sem faixa">${esc(c.overlay || "")}</textarea>
+        <div class="actions">
+          <button class="small primary" data-c="ovl" data-id="${id}">🎬 Aplicar no vídeo</button>
+          <button class="small" data-c="t2o" data-id="${id}">Usar o título</button>
+        </div>
+        <div class="muted" style="font-size:12px">Depois de editar, clique em "Aplicar no vídeo". Ele refaz o vídeo em 1 a 2 minutos.</div>
+      </div>
       <details class="meta" data-id="${id}" ${openMeta.has(id) ? "open" : ""}>
         <summary>📝 Título, descrição e hashtags</summary>
         <label>Título<input type="text" data-f="title" data-id="${id}" value="${esc(c.title)}"></label>
         <label>Descrição<textarea data-f="descr" data-id="${id}">${esc(c.descr)}</textarea></label>
         <label>Hashtags<textarea data-f="tags" data-id="${id}">${esc(c.tags)}</textarea></label>
-        <label>Texto dentro do vídeo (faixa branca)<textarea data-f="overlay" data-id="${id}" placeholder="Vazio = sem texto">${esc(c.overlay || "")}</textarea></label>
         <div class="actions">
           <button class="small" data-c="cpt" data-id="${id}">Copiar título</button>
           <button class="small" data-c="cpa" data-id="${id}">Copiar tudo</button>
           <button class="small" data-c="newt" data-id="${id}">🔄 Outro título</button>
-          <button class="small" data-c="t2o" data-id="${id}">↓ Usar título no vídeo</button>
-          <button class="small primary" data-c="ovl" data-id="${id}">🎬 Aplicar texto no vídeo</button>
         </div>
       </details>
       <div class="actions">
@@ -366,7 +375,11 @@ function renderActivity(){
     : `<div class="muted">Nada ainda. Cole o link de um canal ou de um VOD lá em cima.</div>`;
 }
 async function loadState(){ ST = await api("/api/state"); bindSettings(); renderLives(); renderActivity(); }
-async function loadClips(force){ clips = await api(`/api/clips?status=${filt.status}&channel=${encodeURIComponent(filt.channel)}`); renderClips(force); }
+async function loadClips(force){
+  const fresh = await api(`/api/clips?status=${filt.status}&channel=${encodeURIComponent(filt.channel)}`);
+  for (const c of fresh){ const d = dirty.get(c.id); if (d) Object.assign(c, d); }
+  clips = fresh; renderClips(force);
+}
 
 /* ------------------------------------------------------------ eventos */
 async function addLink(){
@@ -402,8 +415,13 @@ $("#clips").addEventListener("click", async e => {
     if (a === "cpt") return copy(c.title, "Título copiado");
     if (a === "cpa") return copy(`${c.title}\n\n${c.descr}\n\n${c.tags}`, "Título, descrição e hashtags copiados");
     if (a === "newt"){ const r = await post(`/api/clips/${id}/newtitle`); c.title = r.title; openMeta.add(id); renderClips(true); return; }
-    if (a === "t2o"){ c.overlay = c.title; await post(`/api/clips/${id}`, { overlay: c.title }); openMeta.add(id); renderClips(true); return; }
-    if (a === "ovl"){ await saveNow(c); await post(`/api/clips/${id}/retext`); toast("Refazendo o vídeo com o texto novo…"); c.rendering = 1; renderClips(true); return; }
+    if (a === "t2o"){ c.overlay = c.title; const ta = document.getElementById("ov" + id); if (ta) ta.value = c.title; await post(`/api/clips/${id}`, { overlay: c.title }); toast("Título copiado pro texto. Clique em \"Aplicar no vídeo\"."); return; }
+    if (a === "ovl"){
+      const ta = document.getElementById("ov" + id);
+      if (ta){ c.overlay = ta.value; dirty.set(id, { ...(dirty.get(id) || {}), overlay: ta.value }); }
+      await saveNow(c); await post(`/api/clips/${id}/retext`);
+      toast("Refazendo o vídeo com o texto novo… leva 1 a 2 minutos."); c.rendering = 1; renderClips(true); return;
+    }
     if (a === "cam") return openCam({ kind: "clip", id, name: c.channel_name, cam: c.cam, overlay: c.overlay, layout: c.layout || "auto", layoutUsed: c.layout_used });
     if (a === "aprovado" || a === "postado"){ await post(`/api/clips/${id}`, { status: a }); }
     if (a === "del"){
@@ -413,7 +431,7 @@ $("#clips").addEventListener("click", async e => {
     loadClips(true);
   } catch (err) { toast(err.message); }
 });
-let saveT = null, dirty = new Map();
+let saveT = null;
 async function saveNow(c){ clearTimeout(saveT); const d = dirty.get(c.id); if (d){ dirty.delete(c.id); await post(`/api/clips/${c.id}`, d); } }
 $("#clips").addEventListener("input", e => {
   const f = e.target.dataset.f; if (!f) return;

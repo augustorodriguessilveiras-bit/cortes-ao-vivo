@@ -25,7 +25,9 @@ Seus cortes, canais e ajustes (pasta `dados`) não são mexidos. Pra pegar uma m
 - **📷 Marcar câmera:** com o canal gravando, arraste em cima da webcam. Os próximos cortes saem com a cam em cima.
 - **📐 Formato / câmera** (em cada corte): escolha **Automático**, **Câmera em cima + gameplay**, **Tela cheia (full cam)** ou **Só gameplay**, corrija a posição da câmera e refaça o vertical.
 - **Full cam automático:** quando o streamer está em tela cheia na câmera (sem gameplay), o corte sai na tela toda, centrado nele.
-- **📝 Título, descrição e hashtags** (em cada corte): copiar, trocar o título, mudar o texto da faixa e **🎬 Aplicar texto no vídeo**.
+- **✏️ Texto do vídeo** (em cada corte, logo abaixo do vídeo): edite o texto da faixa branca e clique em **🎬 Aplicar no vídeo**.
+- **📝 Título, descrição e hashtags** (em cada corte): copiar e trocar o título.
+- **Duração do corte** (em Ajustes): 60 segundos por padrão (2/3 antes do momento, 1/3 depois), dá pra mudar de 20 a 90.
 - **Os cortes ficam salvos** na pasta `dados\cortes`.
 - A janela preta precisa ficar aberta. Pra desligar, é só fechar.
 
