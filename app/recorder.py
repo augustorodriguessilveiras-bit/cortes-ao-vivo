@@ -47,11 +47,13 @@ def render_vertical_for(clip_id):
     thumb = C.CLIPS_DIR / (c["thumb"] or c["file_h"].replace("_h.mp4", ".jpg"))
     tmp = v.with_name(v.stem + ".novo.mp4")
     try:
-        used = render.make_vertical(h, tmp, thumb, cam=c["cam"], caption=c["overlay"] or "",
+        on = c.get("overlay_on") is None or bool(c.get("overlay_on"))
+        caption = (c["overlay"] or "") if on else ""
+        used = render.make_vertical(h, tmp, thumb, cam=c["cam"], caption=caption,
                                     cap_secs=settings.get("ov_secs"), layout=c.get("layout") or "auto")
         tmp.replace(v)
         db.update("clips", clip_id, {"file_v": rel(v), "thumb": rel(thumb), "rendering": 0,
-                                     "created_at": time.time(), "layout_used": used})
+                                     "created_at": time.time(), "layout_used": used, "overlay_applied": caption})
         if used == "full" and (c.get("layout") or "auto") == "auto":
             log.info("🎥 %s: o streamer estava em tela cheia na câmera, então o corte saiu na tela toda (vertical)", c["channel_name"])
     except Exception as e:

@@ -44,6 +44,8 @@ def start_worker(ch):
 @asynccontextmanager
 async def lifespan(app):
     db.execute("UPDATE clips SET rendering=0 WHERE rendering=1")
+    # cortes de versões antigas: o texto que está no vídeo é o texto salvo
+    db.execute("UPDATE clips SET overlay_applied=COALESCE(overlay,'') WHERE overlay_applied IS NULL")
     CLIP_POOL.submit(render.encoder)  # descobre a placa de vídeo logo no começo
     for ch in db.query("SELECT * FROM channels"):
         start_worker(ch)
@@ -91,6 +93,7 @@ class ClipIn(BaseModel):
     overlay: str | None = None
     status: str | None = None
     yt_tags: str | None = None
+    overlay_on: bool | None = None
 
 
 # ------------------------------------------------------------ estado geral
@@ -250,6 +253,50 @@ def rerender(clip_id: int, body: CamIn | None = None):
     db.update("clips", clip_id, data)
     CLIP_POOL.submit(render_vertical_for, clip_id)
     return {"ok": True}
+
+
+def _gain(c):
+    import re as _re
+    return max([float(x) for x in _re.findall(r"áudio \+(\d+) dB", c["reasons"] or "")] or [0])
+
+
+_hook_tried: dict[int, set] = {}   # textos já sugeridos pra cada corte (não repetir no "Outro texto")
+
+
+@app.post("/api/clips/{clip_id}/newhook")
+def new_hook(clip_id: int):
+    """Sugere outro texto pra faixa, diferente do atual e dos últimos usados nesse streamer."""
+    import random
+    c = _clip(clip_id)
+    subject = c["subject"] or meta.find_subject([c["transcript"] or ""] * 2)
+    first, rest = meta.hook_options(c["cat"] or "geral", c["channel_name"], subject, _gain(c))
+    quotes = meta.transcript_quotes(c["transcript"], c["channel_name"])
+    recent = {r["overlay"] for r in db.query("SELECT overlay FROM clips WHERE channel_name=? AND id<>? ORDER BY created_at DESC LIMIT 60",
+                                             (c["channel_name"], clip_id))}
+    recent.add(c["overlay"])
+    tried = _hook_tried.setdefault(clip_id, set())
+    tried.add(c["overlay"])
+    if len([h for h in quotes + first + rest if h not in recent | tried]) == 0:
+        tried.clear()                       # já mostrou todas: começa a volta de novo
+        tried.add(c["overlay"])
+    avoid = recent | tried
+    related = [h for h in quotes + first if h not in avoid]
+    others = [h for h in rest if h not in avoid]
+    # metade das vezes puxa algo ligado ao corte (fala/assunto), quando tiver; senão, varia entre os outros
+    pool = related if related and (not others or random.random() < 0.6) else (others or related or rest)
+    hook = random.choice(pool)
+    tried.add(hook)
+    db.update("clips", clip_id, {"overlay": hook})
+    return {"overlay": hook}
+
+
+@app.post("/api/clips/{clip_id}/yttags")
+def regen_tags(clip_id: int):
+    c = _clip(clip_id)
+    subject = c["subject"] or meta.find_subject([c["transcript"] or ""] * 2)
+    tags = meta.youtube_tags(c["channel_name"], c.get("platform") or "", c.get("cat") or "geral", subject)
+    db.update("clips", clip_id, {"yt_tags": tags})
+    return {"yt_tags": tags}
 
 
 @app.post("/api/clips/{clip_id}/retext")

@@ -212,6 +212,22 @@ def hook_options(cat, name, subject, gain=0, quote=""):
     return first, rest
 
 
+def transcript_quotes(text, name):
+    """Pedaços curtos do que o streamer falou, no formato da faixa."""
+    if not text:
+        return []
+    N = name.upper()
+    out = []
+    for chunk in re.split(r"[.!?…]+", text):
+        words = chunk.strip(" ,-").split()
+        if len(words) < 3:
+            continue
+        q = " ".join(words[:10]).upper()
+        if 8 <= len(q) <= 70:
+            out.append(f'O {N}: "{q}"')
+    return list(dict.fromkeys(out))
+
+
 def pick_hook(first, rest, avoid=()):
     avoid = set(avoid)
     f = [h for h in first if h not in avoid]
