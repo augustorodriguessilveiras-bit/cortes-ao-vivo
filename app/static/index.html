@@ -216,6 +216,10 @@ function toast(t, ms = 3500){ const e = $("#toast"); e.textContent = t; e.classL
 async function api(path, opts = {}){
   const r = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
   const j = await r.json().catch(() => ({}));
+  if (r.status === 404 && path.startsWith("/api/") && (!j.detail || j.detail === "Not Found")){
+    showOldServer();
+    throw new Error("O programa que está rodando é uma versão antiga. Feche todas as janelas pretas e abra o INICIAR.bat de novo.");
+  }
   if (!r.ok) throw new Error(j.detail || "Erro");
   return j;
 }
@@ -311,6 +315,7 @@ function renderLives(){
   }).join("");
   const sel = $("#chanFilter"), cur = sel.value, names = [...new Set([...cs.map(c => c.name), ...clips.map(c => c.channel_name)])];
   sel.innerHTML = `<option value="">Todos os canais</option>` + names.map(n => `<option>${esc(n)}</option>`).join(""); sel.value = cur;
+  if (!ST.version){ showOldServer(); return; }
   const V = ST.version || {};
   $("#sys").textContent = `Versão ${V.local || "?"} · Vídeo: ${ST.encoder || "…"} · ${ST.disk_free_gb} GB livres`;
   const vb = $("#verBanner");
@@ -420,6 +425,14 @@ function renderActivity(){
   const a = ST.activity || [];
   $("#activity").innerHTML = a.length ? a.map(x => `<div class="${x.level === "WARNING" ? "w" : ""}"><span class="t">${new Date(x.t * 1000).toLocaleTimeString("pt-BR")}</span>${esc(x.msg)}</div>`).join("")
     : `<div class="muted">Nada ainda. Cole o link de um canal ou de um VOD lá em cima.</div>`;
+}
+function showOldServer(){
+  const vb = $("#verBanner"); if (!vb) return;
+  vb.hidden = false;
+  vb.innerHTML = `<b>⚠ Tem uma versão antiga do programa rodando.</b> Por isso alguns botões dão "Not Found" e os cortes saem do jeito antigo.<br>
+    1) Feche <b>todas</b> as janelas pretas do Cortes ao Vivo (se não achar, reinicie o computador).<br>
+    2) Abra o <b>INICIAR.bat</b> da pasta <b>cortes-ao-vivo</b> (só um).<br>
+    3) Recarregue esta página. No topo, à direita, tem que aparecer "Versão …".`;
 }
 async function loadState(){ ST = await api("/api/state"); bindSettings(); renderLives(); renderActivity(); }
 async function loadClips(force){

@@ -57,6 +57,9 @@ echo   Endereco: http://localhost:8000
 echo   Para desligar: feche esta janela.
 echo  ==========================================
 echo.
+rem se uma versao antiga do programa ainda estiver aberta (usando a porta 8000), fecha ela antes
+powershell -NoProfile -Command "$p = Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique; if ($p) { Write-Host '  Fechando uma versao antiga do programa que ainda estava aberta...'; $p | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }; Start-Sleep 2 }"
+
 rem abre o navegador so quando o programa responder (espera ate 2 minutos)
 start "" /min powershell -NoProfile -WindowStyle Hidden -Command "for($i=0;$i -lt 120;$i++){try{Invoke-WebRequest -UseBasicParsing 'http://127.0.0.1:8000/api/state' -TimeoutSec 2 | Out-Null; Start-Process 'http://localhost:8000'; break}catch{Start-Sleep 1}}"
 %PY% -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --no-access-log --log-level warning
