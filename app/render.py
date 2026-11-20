@@ -67,34 +67,43 @@ AENC = ["-c:a", "aac", "-b:a", "192k"]
 # ------------------------------------------------------------ volume do áudio
 def audio_fix(src, ts=0.0, dur=None, mode="auto"):
     """
-    Decide o que fazer com o volume do corte:
-      - áudio bom: não mexe (som original da live)
-      - muito baixo: aumenta até um volume normal, sem estourar
-      - alto demais / batendo no limite: segura só os picos pra não sair estourado
+    Decide o que fazer com o volume do corte, olhando separado:
+      - o volume da FALA (o volume típico de cada segundo; um grito sozinho não muda isso)
+      - o PICO (o ponto mais alto, normalmente um grito)
+    Regras:
+      - fala muito baixa e o grito tem espaço: aumenta só o que cabe (o grito nunca passa de -1,5 dB)
+      - grito batendo no limite: abaixa o corte inteiro só o necessário (sem esmagar o grito, que distorce)
+      - o resto: não mexe (som original da live)
     Retorna (lista de filtros de áudio do ffmpeg, explicação).
     """
     if mode == "off":
         return [], "áudio original"
     try:
+        import numpy as np
         seek = ["-ss", f"{ts:.2f}"] + (["-t", f"{dur:.2f}"] if dur else [])
-        r = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", *seek, "-i", str(src), "-vn",
-                            "-af", "loudnorm=print_format=json", "-f", "null", "-"],
-                           capture_output=True, text=True, creationflags=NO_WINDOW, timeout=300)
-        j = json.loads(r.stderr[r.stderr.rindex("{"):r.stderr.rindex("}") + 1])
-        lufs, peak = float(j["input_i"]), float(j["input_tp"])
+        r = subprocess.run(["ffmpeg", "-v", "error", *seek, "-i", str(src), "-vn", "-ac", "1", "-ar", "48000",
+                            "-f", "f32le", "-"], capture_output=True, creationflags=NO_WINDOW, timeout=300)
+        a = np.frombuffer(r.stdout, np.float32)
+        if len(a) < 48000:
+            return [], "áudio original"
+        peak = 20 * np.log10(float(np.max(np.abs(a))) + 1e-9)
+        secs = a[: len(a) // 48000 * 48000].reshape(-1, 48000)
+        rms = 20 * np.log10(np.sqrt(np.mean(secs ** 2, axis=1)) + 1e-9)
+        rms = rms[rms > -60]                          # ignora silêncio
+        if len(rms) == 0:
+            return [], "áudio original"
+        speech = float(np.median(rms))                # volume típico (fala/jogo)
     except Exception:
         return [], "áudio original"
-    if lufs == float("-inf") or lufs < -60:
-        return [], "áudio original"
-    limiter = "alimiter=limit=0.89:attack=5:release=60:level=0"   # nada passa de -1 dB
-    if lufs < -28:                                   # muito baixo mesmo: sobe pra um volume normal (no máximo +10 dB)
-        gain = min(10.0, -18.0 - lufs)
-        return [f"volume={gain:.1f}dB", limiter], f"áudio baixo: aumentado {gain:.0f} dB"
-    if lufs > -10:                                   # alto demais: abaixa um pouco
-        gain = -14.0 - lufs
-        return [f"volume={gain:.1f}dB", limiter], f"áudio muito alto: abaixado {abs(gain):.0f} dB"
-    if peak > -1.0:                                  # volume bom, mas os gritos batem no limite
-        return [limiter], "picos do áudio segurados pra não estourar"
+    if speech < -32:                                  # fala muito baixa
+        gain = min(10.0, -24.0 - speech, -1.5 - peak)  # nunca deixa o pico passar de -1,5 dB
+        if gain >= 2:
+            return [f"volume={gain:.1f}dB"], f"fala estava baixa: aumentado {gain:.0f} dB (sem estourar)"
+        if peak <= -1.0:
+            return [], "áudio original (fala baixa, mas o grito já está alto; não deu pra aumentar sem estourar)"
+    if peak > -1.0:                                   # grito batendo no limite
+        gain = -1.5 - peak
+        return [f"volume={gain:.1f}dB"], f"grito batendo no limite: abaixado {abs(gain):.1f} dB pra não estourar"
     return [], "áudio original"
 
 
