@@ -270,6 +270,28 @@ def youtube_tags(channel, platform, cat, subject=None):
     return ", ".join(out)
 
 
+def titles_for(channel, cat, subject, gain=0):
+    """Títulos possíveis já ajustados pras regras do canal. Retorna (lista, quantos do começo são ligados à cena)."""
+    disp = rules.display(channel)
+    full = rules.adapt(channel, title_list(cat, disp, subject, gain), "title")
+    if not subject:
+        return full, 0
+    base = set(rules.adapt(channel, title_list(cat, disp, None, gain), "title"))
+    n = 0
+    for t in full:
+        if t in base:
+            break
+        n += 1
+    return full, n
+
+
+def hooks_for(channel, cat, subject, gain=0, quote=""):
+    """Textos da faixa ajustados pras regras do canal. Retorna (ligados ao corte, outros)."""
+    disp = rules.display(channel)
+    first, rest = hook_options(cat, disp, subject, gain, quote)
+    return rules.adapt(channel, first, "hook"), rules.adapt(channel, rest, "hook")
+
+
 def make_meta(channel, platform, url, lines=(), manual=False, gain=0, avoid=(), speech=(), peak_rel=None, avoid_hooks=()):
     """lines: mensagens do chat · speech: o que o streamer falou no corte [(inicio, fim, texto)]"""
     lines = list(lines)
@@ -285,31 +307,38 @@ def make_meta(channel, platform, url, lines=(), manual=False, gain=0, avoid=(), 
     subject = find_subject(lines + spoken + near * 3)
     rule = rules.for_channel(channel)
     disp = rules.display(channel)            # ex: "orenatovicente" aparece como "Renato" nos textos
-    titles = title_list(cat, disp, subject, gain)
-    n_subject = len(title_list(cat, disp, subject)) - len(title_list(cat, disp, None)) if subject else 0
+    titles, n_subject = titles_for(channel, cat, subject, gain)
     raw_title = pick_title(titles, max(0, n_subject), avoid)
     title = rules.title_with_tag(channel, raw_title)
     chat_top = top_message(lines)
     Nn = disp[:1].upper() + disp[1:]
     plat = PLAT.get(platform, "live")
-    desc = f"{CATS[cat]['lead']} do {Nn} ao vivo no GTA 6 🎮"
-    if chat_top:
+    fem = bool(rule and rule.get("fem"))
+    o, do = ("a", "da") if fem else ("o", "do")
+    lead = CATS[cat]["lead"]
+    if rules.is_safe(channel) and cat in ("fail", "susto"):
+        lead = "Melhor momento"
+    desc = f"{lead} {do} {Nn} ao vivo no GTA 6 🎮"
+    if chat_top and not rules.is_safe(channel):   # canais "safe": nada de comentário do chat na legenda
         desc += f'\n💬 O chat: "{chat_top}"'
-    desc += f"\n🔴 Acompanhe o {Nn} na {plat}: {url}"
+    desc += f"\n🔴 Acompanhe {o} {Nn} na {plat}: {url}"
     if rule and rule.get("mention"):
         desc += f"\n📌 {rule['mention']}"
     name_tag = "#" + re.sub(r"[^a-z0-9_]", "", channel.lower())
     tags = []
     base = (rule.get("hashtags", []) if rule else []) + settings.get("tags").split() \
         + [name_tag, name_tag + "cortes", "#" + plat.lower()] + CATS[cat]["tags"]
-    drop = {t.lower() for t in (rule.get("drop_hashtags", []) if rule else [])}
+    # campeonatos pedem hashtags ligadas ao conteúdo: sem #fyp/#viral e, nos canais "safe", sem #fail etc.
+    drop = {"#fyp", "#viral"} if rule else set()
+    if rules.is_safe(channel):
+        drop |= {"#fail", "#gtafail", "#wasted", "#susto", "#wtf"}
     for t in base:
         t = t if t.startswith("#") else "#" + t
         if t not in tags and t.lower() not in drop:
             tags.append(t)
     quote = quote_near(speech, peak_rel)
-    first, rest = hook_options(cat, disp, subject, gain, quote)
-    hook = pick_hook(first, rest, set(avoid_hooks) | {title})
+    first, rest = hooks_for(channel, cat, subject, gain, quote)
+    hook = pick_hook(first, rest, set(avoid_hooks) | {title, raw_title})
     return {
         "cat": cat, "subject": subject, "title": title, "title_idx": titles.index(raw_title), "descr": desc,
         "tags": " ".join(tags), "chat_top": chat_top, "yt_tags": youtube_tags(channel, platform, cat, subject),

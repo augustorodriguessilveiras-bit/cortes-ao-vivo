@@ -202,6 +202,20 @@ def watermark_png(text, out, width, frac=0.034):
     return w, h
 
 
+VIDEO_EXT = (".mp4", ".mov", ".webm", ".mkv")
+
+
+def lower_input(path, dur):
+    """Entrada do ffmpeg pro Lower (imagem fica parada, vídeo repete) + (largura, altura) dele."""
+    path = Path(path)
+    if path.suffix.lower() in VIDEO_EXT:
+        w, h, _ = probe(path)
+        return ["-stream_loop", "-1", "-t", f"{dur:.2f}", "-i", str(path)], (w, h)
+    with Image.open(path) as im:
+        w, h = im.size
+    return ["-loop", "1", "-t", f"{dur:.2f}", "-i", str(path)], (w, h)
+
+
 def horizontal_final(src, out, text=None, trim=None, audio_mode="auto"):
     """Horizontal pra baixar: com o corte manual (trim) e a marca d'água, se tiver."""
     vw, vh, full = probe(src)
@@ -213,7 +227,15 @@ def horizontal_final(src, out, text=None, trim=None, audio_mode="auto"):
     png = Path(out).with_suffix(".marca.png")
     try:
         inputs = ["-ss", f"{ts:.2f}", "-t", f"{dur:.2f}", "-i", str(src)]
-        if text:
+        if isinstance(text, Path):          # Lower (imagem/vídeo do campeonato)
+            args, (lw, lh) = lower_input(text, dur)
+            inputs += args
+            if lh / lw > 1.2:                # Lower feito pra tela inteira em pé: centraliza na altura
+                flt = f"[1:v]scale=-2:{even(vh)},format=rgba[lw];[0:v][lw]overlay=(W-w)/2:0:shortest=1[v]"
+            else:
+                tw = even(vw * 0.45)
+                flt = f"[1:v]scale={tw}:-2,format=rgba[lw];[0:v][lw]overlay=(W-w)/2:H-h-H*0.04:shortest=1[v]"
+        elif text:
             _, h = watermark_png(text, png, vw, frac=0.026)
             y = int(vh - h - vh * 0.05)
             inputs += ["-loop", "1", "-t", f"{dur:.2f}", "-i", str(png)]
@@ -287,7 +309,7 @@ def detect_layout(h_path, cam):
 
 
 def vertical_filter(vw, vh, layout, cam, focus_x, cap_h, cap_secs, dur=0, wm_idx=None, wm_y=0,
-                    cap_win=None, cap_yc=None, wm_xc=None):
+                    cap_win=None, cap_yc=None, wm_xc=None, wm_pre=""):
     """Monta o filtro do ffmpeg pro formato escolhido, com a faixa do título se tiver."""
     if layout == "full":
         # tela cheia: recorte vertical da imagem inteira, centrado no streamer
@@ -335,7 +357,7 @@ def vertical_filter(vw, vh, layout, cam, focus_x, cap_h, cap_secs, dur=0, wm_idx
         f += ";[base]null[v0]"
     if wm_idx is not None:   # marca d'água por cima de tudo, o corte inteiro
         x = f"{int(wm_xc)}-w/2" if wm_xc is not None else "(W-w)/2"
-        f += f";[{wm_idx}:v]format=rgba[wm];[v0][wm]overlay='max(0,min(W-w,{x}))':'max(0,min(H-h,{wm_y}))':shortest=1[v1]"
+        f += f";[{wm_idx}:v]{wm_pre}format=rgba[wm];[v0][wm]overlay='max(0,min(W-w,{x}))':'max(0,min(H-h,{wm_y}))':shortest=1[v1]"
     else:
         f += ";[v0]null[v1]"
     # escurece suavemente no último meio segundo, pro corte não acabar do nada
@@ -372,21 +394,31 @@ def make_vertical(h_path, out, thumb, cam=None, caption="", cap_secs=10, layout=
         a, b = max(0.0, cap_win[0] or 0.0), cap_win[1] if cap_win[1] is not None else 1e9
         cap_win = (min(a, dur), max(min(b, dur if b < 1e5 else b), min(a, dur) + 0.5))
     wm_png = Path(out).with_suffix(".marca.png")
-    wm_idx, wm_y, wm_xc = None, 0, None
-    if watermark:
+    wm_idx, wm_y, wm_xc, wm_pre, wm_args = None, 0, None, "", []
+    if isinstance(watermark, Path):      # Lower do campeonato (imagem ou vídeo)
+        wm_args, (lw, lh) = lower_input(watermark, dur)
+        wx, wy = wm_pos if wm_pos else (0.5, 0.80)
+        if lh / lw > 1.2:                # feito pra tela inteira em pé
+            wm_pre, wm_y, wm_xc = f"scale={W}:{H},", 0, None
+        else:
+            tw = even(W * 0.86)
+            th = int(tw * lh / lw)
+            wm_pre, wm_y, wm_xc = f"scale={tw}:-2,", int(H * wy) - th // 2, W * wx
+        wm_idx = 2 if cap_h else 1
+    elif watermark:
         _, wm_h = watermark_png(watermark, wm_png, W, frac=0.052)   # grande o bastante pra ler no celular
         wx, wy = wm_pos if wm_pos else (0.5, 0.80)
         wm_idx, wm_y, wm_xc = (2 if cap_h else 1), int(H * wy) - wm_h // 2, W * wx
+        wm_args = ["-loop", "1", "-t", f"{dur:.2f}", "-i", str(wm_png)]
     flt = vertical_filter(vw, vh, layout, cam, focus_x, cap_h, cap_secs, dur, wm_idx, wm_y,
-                          cap_win=cap_win, cap_yc=(cap_y * H if cap_y is not None else None), wm_xc=wm_xc)
+                          cap_win=cap_win, cap_yc=(cap_y * H if cap_y is not None else None), wm_xc=wm_xc, wm_pre=wm_pre)
     afx, ainfo = audio_fix(h_path, ts, dur, audio_mode)
     afx += [f"afade=t=out:st={max(0.0, dur - 0.6):.2f}:d=0.6"] if dur > 3 else []
     afade = ["-af", ",".join(afx)] if afx else []
     inputs = ["-ss", f"{ts:.2f}", "-t", f"{dur:.2f}", "-i", str(h_path)]
     if cap_h:
         inputs += ["-loop", "1", "-t", f"{dur:.2f}", "-i", str(cap_png)]
-    if watermark:
-        inputs += ["-loop", "1", "-t", f"{dur:.2f}", "-i", str(wm_png)]
+    inputs += wm_args
     try:
         run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", *inputs, "-filter_complex", flt,
              "-map", "[v]", "-map", "0:a:0?", *venc(), *afade, *AENC, "-movflags", "+faststart", str(out)],

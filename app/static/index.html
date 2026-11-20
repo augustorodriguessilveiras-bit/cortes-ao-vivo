@@ -123,6 +123,8 @@ details.meta[open] summary{margin-bottom:6px}
 .rulebox{display:flex;flex-direction:column;gap:3px;font-size:12.5px;background:rgba(83,252,24,.07);border:1px solid rgba(83,252,24,.45);border-radius:10px;padding:8px 10px;color:var(--text)}
 .rulebox b{color:#53fc18}
 .rulebox .bad{color:var(--warn);font-weight:600}
+.rulebox .note{color:var(--muted);font-size:12px}
+.rulebox .actions{display:flex;gap:6px;flex-wrap:wrap}
 .yttags{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line);padding-top:8px}
 .yttags .lbl{font-size:12.5px;color:var(--accent2);font-weight:600}
 .tagchips{display:flex;flex-wrap:wrap;gap:4px;max-height:96px;overflow:auto}
@@ -339,7 +341,16 @@ function drawVertical(ctx, img, vw, vh, cam, W, H, caption, layout, opts = {}){
     }
   }
   const capRect = drawCaption(ctx, caption, W, opts.capY != null ? opts.capY * H : yDef, opts.capAlpha ?? 1, H);
-  const wmRect = opts.wm ? drawWatermark(ctx, opts.wm.text, W, H, (opts.wm.x ?? 0.5) * W, (opts.wm.y ?? 0.8) * H) : null;
+  let wmRect = null;
+  if (opts.wm && opts.wm.img){        // Lower do campeonato (mesmo tamanho do vídeo final)
+    const im = opts.wm.img, iw = im.naturalWidth || im.width, ih = im.naturalHeight || im.height;
+    if (ih / iw > 1.2){ ctx.drawImage(im, 0, 0, W, H); wmRect = null; }
+    else {
+      const w = W * 0.86, h = w * ih / iw;
+      const x = Math.max(0, Math.min(W - w, opts.wm.x * W - w / 2)), y = Math.max(0, Math.min(H - h, opts.wm.y * H - h / 2));
+      ctx.drawImage(im, x, y, w, h); wmRect = { x, y, w, h };
+    }
+  } else if (opts.wm && opts.wm.text) wmRect = drawWatermark(ctx, opts.wm.text, W, H, (opts.wm.x ?? 0.5) * W, (opts.wm.y ?? 0.8) * H);
   return { capRect, wmRect, capYDefault: yDef / H };
 }
 
@@ -440,10 +451,7 @@ function renderClips(force){
       <div class="row between"><b>${esc(c.channel_name)}</b><span class="score ${c.score >= 8 ? "hi" : ""}">${c.score}</span></div>
       <div class="row between muted"><span>${when}</span><span class="st ${c.status}">${c.status}</span></div>
       ${c.title ? `<div class="ctitle">${esc(c.title)}</div>` : ""}
-      ${c.rules ? `<div class="rulebox"><b>📜 ${esc(c.rules.label)}</b>
-        <span>✓ Marca d'água ${esc(c.rules.watermark)} no corte inteiro</span>
-        <span class="${(c.title || "").toLowerCase().includes(c.rules.title_tag.toLowerCase()) ? "" : "bad"}">${(c.title || "").toLowerCase().includes(c.rules.title_tag.toLowerCase()) ? "✓" : "⚠ Falta"} ${esc(c.rules.title_tag)} no título</span>
-        <span>👉 Ao postar, marque <b>${esc(c.rules.mention)}</b> <button class="small" data-c="cpm" data-id="${id}">Copiar @</button></span></div>` : ""}
+      ${c.rules ? ruleBox(c) : ""}
       <div class="reasons">${esc(c.reasons)}</div>
       ${c.layout_used ? `<div class="fmt">📐 Formato: ${{ cam: "câmera em cima + gameplay", full: "tela cheia (full cam)", game: "só gameplay" }[c.layout_used] || c.layout_used}${(c.layout || "auto") === "auto" ? " (automático)" : ""}</div>` : ""}
       ${c.audio_info ? `<div class="fmt">🔊 ${esc(c.audio_info)}</div>` : ""}
@@ -517,6 +525,40 @@ async function loadClips(force){
   clips = fresh; renderClips(force);
 }
 
+/* ------------------------------------------------------------ regras do campeonato no cartão */
+function ruleBox(c){
+  const r = c.rules, id = c.id, hasTag = !r.title_tag || (c.title || "").toLowerCase().includes(r.title_tag.toLowerCase());
+  return `<div class="rulebox"><b>📜 ${esc(r.label)}</b>
+    ${r.watermark ? `<span>✓ Marca d'água ${esc(r.watermark)} no corte inteiro</span>` : ""}
+    ${r.lower ? (r.lower_missing
+      ? `<span class="bad">⚠ Falta o Lower do campeonato. Ele vai em todo corte do canal.</span>
+         <span class="actions"><button class="small primary" data-c="lowlink" data-id="${id}">🔗 Colar link do Drive</button><button class="small" data-c="lowfile" data-id="${id}">📁 Enviar arquivo</button></span>`
+      : `<span>✓ Lower do campeonato no corte <button class="small" data-c="lowfile" data-id="${id}">Trocar</button></span>`) : ""}
+    ${r.title_tag ? `<span class="${hasTag ? "" : "bad"}">${hasTag ? "✓" : "⚠ Falta"} ${esc(r.title_tag)} no título</span>` : ""}
+    ${r.mention ? `<span>👉 Ao postar, marque <b>${esc(r.mention)}</b> <button class="small" data-c="cpm" data-id="${id}">Copiar @</button></span>` : ""}
+    ${(r.notes || []).map(n => `<span class="note">• ${esc(n)}</span>`).join("")}
+  </div>`;
+}
+const lowerImgs = new Map();   // key -> imagem do Lower (pra prévia)
+function lowerImg(r){
+  if (!r || !r.lower_url) return null;
+  if (!lowerImgs.has(r.lower_url)){ const im = new Image(); im.src = r.lower_url; lowerImgs.set(r.lower_url, im); }
+  const im = lowerImgs.get(r.lower_url); return im.complete && im.naturalWidth ? im : null;
+}
+function markOpts(c, x, y){
+  if (!c.rules) return null;
+  if (c.rules.watermark) return { text: c.rules.watermark, x, y };
+  const im = lowerImg(c.rules); return im ? { img: im, x, y } : null;
+}
+async function uploadLower(key, file){
+  try {
+    toast("Enviando o Lower…");
+    const r = await fetch(`/api/rules/${key}/lower`, { method: "POST", body: file, headers: { "X-Filename": encodeURIComponent(file.name) } });
+    const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.detail || "Erro");
+    toast(`Lower salvo! Refazendo ${j.rerendering} corte(s) com ele…`, 5000); loadClips(true);
+  } catch (e) { toast(e.message, 6000); }
+}
+
 /* ------------------------------------------------------------ prévia do texto no cartão */
 const ovOn = c => c.overlay_on === null || c.overlay_on === undefined || !!c.overlay_on;
 const frames = new Map();   // id -> imagem do corte (sem texto), pra montar a prévia
@@ -538,7 +580,7 @@ function drawPreview(id){
   if (!img){ ctx.fillStyle = "#000"; ctx.fillRect(0, 0, cv.width, cv.height); return; }
   const lay = c.layout_used || (c.cam ? "cam" : "game");
   drawVertical(ctx, img, img.width, img.height, lay === "cam" ? c.cam : null, cv.width, cv.height, st.want, lay,
-    { capY: c.cap_y, wm: c.rules ? { text: c.rules.watermark, x: c.wm_x ?? 0.5, y: c.wm_y ?? 0.8 } : null });
+    { capY: c.cap_y, wm: markOpts(c, c.wm_x ?? 0.5, c.wm_y ?? 0.8) });
 }
 const frameObs = new IntersectionObserver(entries => {
   for (const e of entries){
@@ -560,8 +602,9 @@ function openEditor(c){
   const secs = c.ov_secs ?? ST.settings.ov_secs ?? 10;
   Object.assign(ED, { c, v, drag: null, ts: c.trim_start ?? 0, te: c.trim_end ?? null, on: ovOn(c), text: c.overlay || "",
     ca: c.cap_start ?? 0, cb: c.cap_end ?? (secs > 40 ? 9999 : secs), capY: c.cap_y ?? null,
-    wm: c.rules ? { text: c.rules.watermark, x: c.wm_x ?? 0.5, y: c.wm_y ?? 0.8 } : null });
-  $("#edWmBox").hidden = !c.rules;
+    wm: (c.rules && (c.rules.watermark || c.rules.lower_url)) ? { x: c.wm_x ?? 0.5, y: c.wm_y ?? 0.8 } : null });
+  if (ED.wm) Object.assign(ED.wm, c.rules.watermark ? { text: c.rules.watermark } : { lowerOf: c.rules });
+  $("#edWmBox").hidden = !ED.wm;
   $("#edOn").checked = ED.on; $("#edText").value = ED.text;
   v.addEventListener("loadedmetadata", () => {
     const d = v.duration; ED.dur = d; if (ED.te == null || ED.te > d) ED.te = d;
@@ -594,7 +637,8 @@ function edLoop(){
     const c = ED.c, lay = c.layout_used || (c.cam ? "cam" : "game"), cv = $("#edCanvas");
     // fora do tempo do texto ele aparece apagadinho, só pra dar pra arrastar
     ED.rects = drawVertical(cv.getContext("2d"), v, v.videoWidth, v.videoHeight, lay === "cam" ? c.cam : null, cv.width, cv.height,
-      ED.on ? ED.text : "", lay, { capY: ED.capY, capAlpha: inWin ? 1 : 0.35, wm: ED.wm });
+      ED.on ? ED.text : "", lay, { capY: ED.capY, capAlpha: inWin ? 1 : 0.35,
+        wm: ED.wm ? (ED.wm.lowerOf ? (lowerImg(ED.wm.lowerOf) ? { img: lowerImg(ED.wm.lowerOf), x: ED.wm.x, y: ED.wm.y } : null) : ED.wm) : null });
     $("#edTime").textContent = `${fmtT(v.currentTime)}  ·  no corte: ${fmtT(rel)} de ${fmtT(clipLen())}`;
     $("#edHead").style.left = `${(v.currentTime / ED.dur * 100).toFixed(2)}%`;
   }
@@ -691,7 +735,22 @@ $("#clips").addEventListener("click", async e => {
   try {
     if (a === "edit") return openEditor(c);
     if (a === "cpt") return copy(c.title, "Título copiado");
-    if (a === "cpm") return copy(c.rules?.mention || "", "@ copiado. Marque ele na postagem.");
+    if (a === "cpm") return copy(c.rules?.mention || "", "@ copiado. Marque na postagem.");
+    if (a === "lowfile"){
+      const inp = Object.assign(document.createElement("input"), { type: "file", accept: "image/*,video/*,.png,.jpg,.jpeg,.webp,.mp4,.mov,.webm" });
+      inp.onchange = () => inp.files[0] && uploadLower(c.rules.key, inp.files[0]); inp.click(); return;
+    }
+    if (a === "lowlink"){
+      const box = b.closest(".rulebox"); if (box.querySelector(".lowlink")) return;
+      box.insertAdjacentHTML("beforeend", `<span class="lowlink actions"><input type="text" placeholder="Cole aqui o link do Google Drive" style="flex:1;min-width:0;padding:6px 9px;font-size:13px"><button class="small primary">Baixar</button></span>`);
+      const row = box.querySelector(".lowlink"), inp = row.querySelector("input"); inp.focus();
+      row.querySelector("button").onclick = async () => {
+        try { toast("Baixando o Lower do Drive…"); const j = await post(`/api/rules/${c.rules.key}/lower_link`, { url: inp.value.trim() });
+          toast(`Lower salvo (${j.file})! Refazendo ${j.rerendering} corte(s)…`, 6000); loadClips(true); }
+        catch (e) { toast(e.message, 9000); }
+      };
+      return;
+    }
     if (a === "cpy") return copy(c.yt_tags || "", "Tags do YouTube copiadas. Cole no campo \"Tags\" do YouTube.");
     if (a === "cpa") return copy(`${c.title}\n\n${c.descr}\n\n${c.tags}`, "Título, descrição e hashtags copiados");
     if (a === "newt"){ const r = await post(`/api/clips/${id}/newtitle`); c.title = r.title; openMeta.add(id); renderClips(true); return; }

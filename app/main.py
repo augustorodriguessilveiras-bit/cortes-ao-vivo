@@ -12,7 +12,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import config as C
-from . import db, meta, render, rules, settings, sources, version, vod
+import urllib.parse
+
+from . import db, drive, meta, render, rules, settings, sources, version, vod
 from .recorder import CLIP_POOL, ChannelWorker, render_vertical_for
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(message)s", datefmt="%H:%M:%S")
@@ -230,10 +232,8 @@ def new_title(clip_id: int):
     c = _clip(clip_id)
     import re as _re
     gain = max([float(x) for x in _re.findall(r"áudio \+(\d+) dB", c["reasons"] or "")] or [0])
-    disp = rules.display(c["channel_name"])
-    titles = [rules.title_with_tag(c["channel_name"], t) for t in meta.title_list(c["cat"] or "geral", disp, c["subject"], gain)]
-    n_subject = (len(meta.title_list(c["cat"] or "geral", disp, c["subject"]))
-                 - len(meta.title_list(c["cat"] or "geral", disp, None))) if c["subject"] else 0
+    raw, n_subject = meta.titles_for(c["channel_name"], c["cat"] or "geral", c["subject"], gain)
+    titles = [rules.title_with_tag(c["channel_name"], t) for t in raw]
     recent = [r["title"] for r in db.query("SELECT title FROM clips WHERE channel_name=? AND id<>? ORDER BY created_at DESC LIMIT 60",
                                            (c["channel_name"], clip_id))]
     title = meta.pick_title(titles, max(0, n_subject), recent, current=c["title"])
@@ -275,8 +275,8 @@ def new_hook(clip_id: int):
     c = _clip(clip_id)
     subject = c["subject"] or meta.find_subject([c["transcript"] or ""] * 2)
     disp = rules.display(c["channel_name"])
-    first, rest = meta.hook_options(c["cat"] or "geral", disp, subject, _gain(c))
-    quotes = meta.transcript_quotes(c["transcript"], disp)
+    first, rest = meta.hooks_for(c["channel_name"], c["cat"] or "geral", subject, _gain(c))
+    quotes = rules.adapt(c["channel_name"], meta.transcript_quotes(c["transcript"], disp), "hook")
     recent = {r["overlay"] for r in db.query("SELECT overlay FROM clips WHERE channel_name=? AND id<>? ORDER BY created_at DESC LIMIT 60",
                                              (c["channel_name"], clip_id))}
     recent.add(c["overlay"])
@@ -331,6 +331,89 @@ def edit_clip_video(clip_id: int, body: EditIn):
     CLIP_POOL.submit(render_vertical_for, clip_id)
     plog.info("✂ %s: refazendo o corte com as suas edições…", c["channel_name"])
     return {"ok": True}
+
+
+# ------------------------------------------------------------ Lower dos campeonatos
+def _rerender_channel(key):
+    """Refaz os cortes do canal (pra entrar o Lower novo)."""
+    n = 0
+    for c in db.query("SELECT id, channel_name FROM clips WHERE rendering=0"):
+        if rules.key_for(c["channel_name"]) == key:
+            db.update("clips", c["id"], {"rendering": 1})
+            CLIP_POOL.submit(render_vertical_for, c["id"])
+            n += 1
+    return n
+
+
+def _save_lower(key, path, original_name):
+    for old in rules.LOWERS_DIR.glob(f"{key}.*"):
+        if old != path:
+            old.unlink(missing_ok=True)
+    n = _rerender_channel(key)
+    plog.info("🖼 Lower de %s salvo (%s). Refazendo %d corte(s) com ele…", rules.RULES[key]["label"], original_name, n)
+    return {"ok": True, "file": original_name, "rerendering": n}
+
+
+@app.get("/api/rules/{key}/lower")
+def get_lower(key: str):
+    f = rules.lower_file(key)
+    if not f:
+        raise HTTPException(404, "Ainda não tem Lower pra esse canal")
+    return FileResponse(f)
+
+
+@app.post("/api/rules/{key}/lower")
+async def upload_lower(key: str, request: Request):
+    """Recebe o arquivo do Lower (imagem PNG/JPG ou vídeo MP4/MOV/WEBM) enviado pelo painel."""
+    if key not in rules.RULES or not rules.RULES[key].get("lower"):
+        raise HTTPException(400, "Esse canal não usa Lower")
+    name = urllib.parse.unquote(request.headers.get("x-filename", "lower.png"))
+    ext = ("." + name.rsplit(".", 1)[-1].lower()) if "." in name else ""
+    if ext not in rules.IMG_EXT + rules.VID_EXT:
+        raise HTTPException(400, f"Formato {ext or '?'} não serve. Envie PNG, JPG, MP4, MOV ou WEBM.")
+    data = await request.body()
+    out = rules.LOWERS_DIR / f"{key}.new{ext}"
+    out.write_bytes(data)
+    final = rules.LOWERS_DIR / f"{key}{ext}"
+    out.replace(final)
+    return _save_lower(key, final, name)
+
+
+@app.post("/api/rules/{key}/lower_link")
+def lower_from_link(key: str, body: LinkIn):
+    """Baixa o Lower de um link público do Google Drive (pasta ou arquivo)."""
+    if key not in rules.RULES or not rules.RULES[key].get("lower"):
+        raise HTTPException(400, "Esse canal não usa Lower")
+    try:
+        kind, fid = drive.parse(body.url)
+        name = ""
+        if kind == "folder":
+            entries = drive.list_folder(fid)
+            for _ in range(2):   # entra em subpastas (ex: "Lower - Luanz7")
+                files = [e for e in entries if not e[2]]
+                if files or not any(e[2] for e in entries):
+                    break
+                sub = next((e for e in entries if e[2] and "lower" in e[1].lower()), None) or next(e for e in entries if e[2])
+                entries = drive.list_folder(sub[0])
+            ok_ext = rules.IMG_EXT + rules.VID_EXT
+            usable = [e for e in entries if not e[2] and e[1].lower().endswith(ok_ext)]
+            if not usable:
+                names = ", ".join(e[1] for e in entries) or "nenhum arquivo"
+                raise ValueError(f"Não achei imagem ou vídeo do Lower nessa pasta (achei: {names}). "
+                                 "Baixe o arquivo certo e use \"Enviar arquivo\".")
+            pick = sorted(usable, key=lambda e: (0 if e[1].lower().endswith(".png") else 1, "lower" not in e[1].lower()))[0]
+            fid, name = pick[0], pick[1]
+        out, real_name = drive.download(fid, rules.LOWERS_DIR, f"{key}.new")
+        if out.suffix.lower() not in rules.IMG_EXT + rules.VID_EXT:
+            out.unlink(missing_ok=True)
+            raise ValueError(f"O arquivo do Drive ({real_name or name}) não é imagem nem vídeo. Use \"Enviar arquivo\".")
+        final = rules.LOWERS_DIR / f"{key}{out.suffix.lower()}"
+        out.replace(final)
+        return _save_lower(key, final, real_name or name)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(400, f"Não consegui baixar do Drive: {e}")
 
 
 @app.post("/api/clips/{clip_id}/retext")

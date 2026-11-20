@@ -47,8 +47,10 @@ def render_vertical_for(clip_id):
     thumb = C.CLIPS_DIR / (c["thumb"] or c["file_h"].replace("_h.mp4", ".jpg"))
     tmp = v.with_name(v.stem + ".novo.mp4")
     try:
+        wm = rules.mark_for(c["channel_name"])   # marca d'água (texto) ou Lower (arquivo) do campeonato
         rule = rules.for_channel(c["channel_name"])
-        wm = rule.get("watermark") if rule else None
+        if rule and rule.get("lower") and not wm:
+            log.warning("⚠ %s: falta enviar o Lower do campeonato. O corte saiu sem ele; envie no painel e refaça.", c["channel_name"])
         on = c.get("overlay_on") is None or bool(c.get("overlay_on"))
         caption = (c["overlay"] or "") if on else ""
         trim = (c.get("trim_start"), c.get("trim_end")) if c.get("trim_start") is not None or c.get("trim_end") is not None else None

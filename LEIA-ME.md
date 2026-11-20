@@ -118,9 +118,18 @@ Instale nos dois PCs do mesmo jeito: Python, extrair o zip e `INICIAR.bat`.
 ---
 
 ## Regras por streamer (campeonatos)
-Alguns canais têm regras próprias, aplicadas sozinhas só nos cortes deles (arquivo `app/rules.py`):
-- **Renato Vicente** (`kick.com/orenatovicente`): marca d'água `kick.com/orenatovicente` no corte inteiro (vertical e horizontal),
-  `#orenatovicente` no título, `@orenatovicente` na descrição pra marcar ao postar, e sem hashtags genéricas (#fyp, #viral).
+Alguns canais têm regras próprias, aplicadas sozinhas só nos cortes deles (arquivo `app/rules.py`). Os outros canais seguem normais.
+
+| Canal | Hashtag no título | No vídeo | Marcar |
+|---|---|---|---|
+| Renato Vicente (`orenatovicente`) | #orenatovicente | marca d'água kick.com/orenatovicente | @orenatovicente |
+| Allan Stag (`allanstag`) | #allanstag | marca d'água kick.com/allanstag | — |
+| Mitsuke (`mitsuke`) | #mitsuke | marca d'água kick.com/mitsuke | — |
+| Luanz7 (`luanz7`) | #luanz7 | **Lower** oficial (envie uma vez no painel: link do Drive ou arquivo) | @luanz7 |
+| Yayah (`yayahuz`) | #yayah | — | @yayahuz |
+
+Em todos: sem #fyp/#viral (hashtags ligadas ao conteúdo). Na Yayah, só títulos e textos respeitosos, no feminino,
+e sem comentário do chat na descrição.
 
 ## Ajustes (arquivo `.env`)
 | Opção | O que faz |
