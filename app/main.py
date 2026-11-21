@@ -1,4 +1,5 @@
 import base64
+import json
 import logging
 import secrets
 import shutil
@@ -16,8 +17,9 @@ import urllib.parse
 
 import re
 
+from . import compile as compilado
 from . import db, drive, meta, procs, quality, render, rules, settings, sources, transcribe, version, vod
-from .recorder import CLIP_POOL, ChannelWorker, clip_paths, rel, render_vertical_for
+from .recorder import CLIP_POOL, ChannelWorker, after_insert, clip_paths, effective_trim, extra_fields, listen, rel, render_vertical_for
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(message)s", datefmt="%H:%M:%S")
 for _n in ("httpx", "urllib3", "streamlink"):
@@ -211,7 +213,141 @@ def list_clips(status: str = "", channel: str = "", limit: int = 300):
         if not c.get("yt_tags"):
             c["yt_tags"] = meta.youtube_tags(c["channel_name"], c.get("platform") or "", c.get("cat") or "geral", c.get("subject"))
             db.update("clips", c["id"], {"yt_tags": c["yt_tags"]})
+        et = effective_trim(c)                       # pedaço que vira o corte (pro editor)
+        c["eff_ts"], c["eff_te"] = (et if et else (None, None))
+        c["has_words"] = bool(c.get("words"))
+        c.pop("words", None)
+        c.pop("features", None)
+        c["posted_on"] = _js(c.get("posted_on"))
+        c["views"] = _js(c.get("views"))
+        if c.get("dup_of"):
+            o = db.query("SELECT id, title, status FROM clips WHERE id=?", (c["dup_of"],))
+            c["dup"] = o[0] if o else None
     return rows
+
+
+def _js(v):
+    try:
+        return json.loads(v) if v else {}
+    except Exception:
+        return {}
+
+
+PLATS = ("tiktok", "reels", "shorts")
+
+
+class StyleIn(BaseModel):
+    style: str
+
+
+@app.post("/api/clips/{clip_id}/style")
+def set_style(clip_id: int, body: StyleIn):
+    """Padrão (como sempre foi) ou Dinâmico (legenda palavra por palavra, zoom na reação, começo/fim esperto)."""
+    c = _clip(clip_id)
+    if body.style not in ("padrao", "dinamico"):
+        raise HTTPException(400, "Estilo inválido")
+    db.update("clips", clip_id, {"style": body.style, "trim_start": None, "trim_end": None, "subs_on": None,
+                                 "zoom_on": None, "rendering": 1, "warn": None})
+    CLIP_POOL.submit(render_vertical_for, clip_id)
+    if body.style == "dinamico" and not c.get("words") and not transcribe.available():
+        return {"ok": True, "aviso": "Sem o reconhecimento de fala instalado, o estilo dinâmico sai sem a legenda."}
+    return {"ok": True}
+
+
+class PostedIn(BaseModel):
+    platform: str
+    on: bool = True
+    views: int | None = None
+
+
+@app.post("/api/clips/{clip_id}/posted")
+def set_posted(clip_id: int, body: PostedIn):
+    """Marca em qual rede você postou (TikTok, Reels, Shorts) e quantas visualizações teve."""
+    c = _clip(clip_id)
+    if body.platform not in PLATS:
+        raise HTTPException(400, "Plataforma inválida")
+    posted, views = _js(c.get("posted_on")), _js(c.get("views"))
+    data = {}
+    if body.views is not None:
+        views[body.platform] = max(0, int(body.views))
+        posted.setdefault(body.platform, time.time())
+        data["views"] = json.dumps(views)
+    elif body.on:
+        posted[body.platform] = time.time()
+    else:
+        posted.pop(body.platform, None)
+        views.pop(body.platform, None)
+        data["views"] = json.dumps(views) if views else None
+    data["posted_on"] = json.dumps(posted) if posted else None
+    db.update("clips", clip_id, data)
+    if posted:
+        quality.record(clip_id, c.get("features"), 1)        # postou: esse é bom
+    if body.views is not None:
+        quality.train()                                       # aprende com as views
+    res = {"ok": True, "posted_on": posted, "views": views, "freed_mb": 0}
+    if all(p in posted for p in PLATS) and c["status"] != "postado":
+        res["freed_mb"] = edit_clip(clip_id, ClipIn(status="postado"))["freed_mb"]
+        res["status"] = "postado"
+    return res
+
+
+@app.get("/api/insights")
+def insights():
+    """O que dá mais visualização: por tipo de momento, por streamer e por estilo."""
+    rows = [r for r in db.query("SELECT channel_name, cat, theme, style, views, core_start, core_end, trim_start, trim_end "
+                                "FROM clips WHERE views IS NOT NULL")
+            if quality.total_views(r["views"]) > 0]
+
+    def group(key):
+        g = {}
+        for r in rows:
+            k = key(r)
+            if k:
+                g.setdefault(k, []).append(quality.total_views(r["views"]))
+        return sorted(([k, round(sum(v) / len(v)), len(v)] for k, v in g.items()), key=lambda x: -x[1])
+    cats = {"policia": "Polícia", "fail": "Fail / deu ruim", "epico": "Épico", "susto": "Susto", "engracado": "Engraçado",
+            "descoberta": "Descoberta / bug", "geral": "Outros"}
+    plat = {}
+    for r in rows:
+        for p, n in _js(r["views"]).items():
+            plat.setdefault(p, []).append(int(n or 0))
+    return {"n": len(rows),
+            "by_cat": group(lambda r: cats.get(r["cat"] or "geral", r["cat"])),
+            "by_channel": group(lambda r: rules.display(r["channel_name"])),
+            "by_style": group(lambda r: "Dinâmico" if r["style"] == "dinamico" else "Padrão"),
+            "by_theme": group(lambda r: "React" if r["theme"] == "react" else "GTA"),
+            "by_platform": sorted(([{"tiktok": "TikTok", "reels": "Reels", "shorts": "Shorts"}.get(k, k),
+                                    round(sum(v) / len(v)), len(v)] for k, v in plat.items()), key=lambda x: -x[1])}
+
+
+# ------------------------------------------------------------ compilado (YouTube, deitado)
+@app.get("/api/compile")
+def compile_state(channel: str = "", days: int = 7):
+    cands = compilado.candidates(channel, max(1, min(60, days)))
+    return {"candidates": [{"id": c["id"], "title": c["title"], "channel_name": c["channel_name"], "score": c["score"],
+                            "views": c["total_views"], "thumb": c.get("thumb"), "status": c["status"],
+                            "created_at": c["created_at"]} for c in cands],
+            "items": db.query("SELECT * FROM compilations ORDER BY created_at DESC LIMIT 20")}
+
+
+class CompileIn(BaseModel):
+    clip_ids: list[int]
+    title: str | None = None
+
+
+@app.post("/api/compile")
+def compile_start(body: CompileIn):
+    try:
+        cid = compilado.start(body.clip_ids[:40], body.title)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True, "id": cid}
+
+
+@app.delete("/api/compile/{cid}")
+def compile_delete(cid: int):
+    compilado.remove(cid)
+    return {"ok": True}
 
 
 def _clip(clip_id):
@@ -351,6 +487,9 @@ class EditIn(BaseModel):
     wm_y: float | None = None
     overlay: str | None = None
     overlay_on: bool | None = None
+    subs_on: bool | None = None
+    zoom_on: bool | None = None
+    sub_y: float | None = None
 
 
 @app.post("/api/clips/{clip_id}/edit")
@@ -478,7 +617,7 @@ def _process_upload(raw, name, platform, theme):
     try:
         vw, vh, dur = render.probe(raw)
         render.make_horizontal(["-i", str(raw)], h, 0, dur)        # deixa num formato padrão (mp4)
-        speech = transcribe.transcribe(h)
+        lines, speech, words = listen(h, 0.0, dur)
         q = quality.evaluate(5.0, speech, dur * 0.5, dur)
         ch = db.query("SELECT * FROM channels WHERE name=?", (name,))
         url = ch[0]["url"] if ch else PLATFORM_URL.get(platform, "https://kick.com/{n}").format(n=name)
@@ -493,8 +632,9 @@ def _process_upload(raw, name, platform, theme):
             # vídeo que já veio em pé: só encaixa no 9:16 (tela cheia)
             "layout": "full" if vh / max(1, vw) > 1.2 else "auto",
             "features": _json.dumps(q["features"]) if q["features"] else None,
-            "signal_score": q["signal"], "content_score": q["content"], **m})
-        render_vertical_for(clip_id)
+            "signal_score": q["signal"], "content_score": q["content"], **m,
+            **extra_fields(h, 0.0, dur, None, lines, words)})
+        after_insert(clip_id)
         plog.info("📤 Seu corte de %s está pronto no painel.", name)
     except Exception as e:
         plog.warning("⚠ Não deu pra montar o corte enviado (%s).", str(e)[:150])
@@ -650,6 +790,7 @@ def cleanup(body: CleanupIn):
         used = set()
         for c in db.query("SELECT * FROM clips"):
             used |= {str(f) for f in _clip_files(c)}
+        used |= {str(C.CLIPS_DIR / r["file"]) for r in db.query("SELECT file FROM compilations WHERE file IS NOT NULL")}
         recent = time.time() - 30 * 60       # não mexe em nada usado nos últimos 30 min (pode ser um corte sendo montado)
         for f in list(C.CLIPS_DIR.rglob("*")):
             if f.is_file() and str(f) not in used and f.stat().st_mtime < recent:

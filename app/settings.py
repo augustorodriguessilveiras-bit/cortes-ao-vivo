@@ -15,6 +15,8 @@ DEFAULTS = {
     "discard_below": 5.0,              # descarta sozinho cortes com nota final abaixo disso (0 = nunca)
     "posted_cleanup": True,            # ao marcar "postado", apaga os vídeos pra liberar espaço
     "audio_mode": "auto",              # auto: só mexe se estiver muito baixo ou estourando · off: nunca mexe
+    "pad": 30,                         # sobra guardada antes e depois do corte (pra puxar mais no editor)
+    "style": "padrao",                 # estilo dos cortes novos: padrao · dinamico (legenda, zoom e começo/fim esperto)
 }
 _lock = threading.Lock()
 
@@ -42,6 +44,9 @@ def update(changes: dict):
         for k, v in changes.items():
             if k in DEFAULTS:
                 data[k] = type(DEFAULTS[k])(v) if not isinstance(DEFAULTS[k], bool) else bool(v)
+        if data.get("style") not in ("padrao", "dinamico"):
+            data["style"] = "padrao"
+        data["pad"] = max(0, min(60, int(data.get("pad", 30))))
         if data.get("audio_mode") not in ("auto", "off"):
             data["audio_mode"] = "auto"
         C.SETTINGS_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")

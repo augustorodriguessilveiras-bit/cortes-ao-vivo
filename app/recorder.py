@@ -21,7 +21,7 @@ import numpy as np
 from . import config as C
 import json
 
-from . import db, meta, quality, render, rules, settings, sources, transcribe
+from . import db, meta, quality, render, rules, settings, smart, sources, transcribe
 from .procs import safe_unlink
 from .chat import TwitchChat
 
@@ -42,6 +42,53 @@ def rel(p):
     return Path(p).relative_to(C.CLIPS_DIR).as_posix()
 
 
+def listen(h, cs, ce):
+    """
+    Ouve o vídeo guardado (que tem sobra antes e depois). Retorna:
+      (frases do vídeo todo, frases só do corte com o tempo contando do começo do corte, palavras) ou (None, None, []).
+    """
+    r = transcribe.transcribe_words(h)
+    if r is None:
+        return None, None, []
+    lines, words = r
+    core = [(max(0.0, s - cs), min(ce, e) - cs, t) for s, e, t in lines if e >= cs and s <= ce]
+    return lines, core, words
+
+
+def extra_fields(h, cs, ce, peak, lines, words):
+    """Campos novos do corte: onde está o corte dentro do vídeo guardado, começo/fim esperto e as palavras."""
+    _, _, hdur = render.probe(h)
+    ce = min(ce, hdur) if hdur else ce
+    out = {"core_start": round(cs, 2), "core_end": round(ce, 2), "peak_rel": round(peak, 2) if peak is not None else None,
+           "style": settings.get("style"), "words": json.dumps(words) if words else None}
+    sw = smart.smart_window(lines, peak, hdur or ce, max_len=max(20.0, ce - cs)) if lines else None
+    if sw:
+        out.update(smart_start=sw[0], smart_end=sw[1])
+    return out
+
+
+def after_insert(clip_id):
+    """Depois de criar o corte: avisa se for repetido e monta o vertical."""
+    try:
+        other = smart.find_dup(clip_id)
+        if other:
+            log.info("♻ Esse corte parece repetido de outro que já existe (o mesmo momento). Marquei no painel.")
+    except Exception:
+        log.debug("não deu pra checar repetido", exc_info=True)
+    render_vertical_for(clip_id)
+
+
+def effective_trim(c):
+    """Pedaço do vídeo guardado que vira o corte: o que você escolheu no editor > começo/fim esperto > o corte normal."""
+    if c.get("trim_start") is not None or c.get("trim_end") is not None:
+        return c.get("trim_start"), c.get("trim_end")
+    if (c.get("style") == "dinamico") and c.get("smart_start") is not None:
+        return c["smart_start"], c["smart_end"]
+    if c.get("core_start") is not None:
+        return c["core_start"], c["core_end"]
+    return None
+
+
 def render_vertical_for(clip_id):
     """(Re)faz o vertical de um corte a partir do horizontal, com a câmera e o texto atuais."""
     c = db.query("SELECT * FROM clips WHERE id=?", (clip_id,))[0]
@@ -56,13 +103,28 @@ def render_vertical_for(clip_id):
             log.warning("⚠ %s: falta enviar o Lower do campeonato. O corte saiu sem ele; envie no painel e refaça.", c["channel_name"])
         on = c.get("overlay_on") is None or bool(c.get("overlay_on"))
         caption = (c["overlay"] or "") if on else ""
-        trim = (c.get("trim_start"), c.get("trim_end")) if c.get("trim_start") is not None or c.get("trim_end") is not None else None
+        trim = effective_trim(c)
+        dyn = c.get("style") == "dinamico"
+        subs_on = bool(c["subs_on"]) if c.get("subs_on") is not None else dyn
+        zoom_on = bool(c["zoom_on"]) if c.get("zoom_on") is not None else dyn
+        words = json.loads(c["words"]) if c.get("words") else None
+        if (subs_on or zoom_on) and words is None and transcribe.available():
+            r = transcribe.transcribe_words(h)            # corte antigo: ouve agora pra ter as palavras
+            if r is not None:
+                words = r[1]
+                db.update("clips", clip_id, {"words": json.dumps(words)})
+        zooms = []
+        if zoom_on:
+            _, _, hdur = render.probe(h)
+            ts, te = (trim[0] or 0.0, trim[1] or hdur) if trim else (0.0, hdur)
+            zooms = smart.zoom_moments(words, smart.group_words(words), ts, te, c.get("peak_rel"))
         cap_win = (c.get("cap_start"), c.get("cap_end")) if c.get("cap_start") is not None or c.get("cap_end") is not None else None
         wm_pos = (c["wm_x"], c["wm_y"]) if c.get("wm_x") is not None and c.get("wm_y") is not None else None
         used = render.make_vertical(h, tmp, thumb, cam=c["cam"], caption=caption,
                                     cap_secs=settings.get("ov_secs"), layout=c.get("layout") or "auto", watermark=wm,
                                     trim=trim, cap_win=cap_win, cap_y=c.get("cap_y"), wm_pos=wm_pos,
-                                    audio_mode=settings.get("audio_mode"))
+                                    audio_mode=settings.get("audio_mode"),
+                                    subs=words if subs_on else None, sub_y=c.get("sub_y"), zooms=zooms)
         tmp.replace(v)
         if wm or trim:
             # horizontal pra baixar, com o corte manual e a marca d'água (o original fica limpo pra poder editar de novo)
@@ -77,7 +139,8 @@ def render_vertical_for(clip_id):
             db.update("clips", clip_id, {"cam": found})
             log.info("📷 %s: achei a webcam sozinho no corte (dá pra ajustar em 📐 Formato / câmera)", c["channel_name"])
         db.update("clips", clip_id, {"file_v": rel(v), "thumb": rel(thumb), "rendering": 0,
-                                     "created_at": time.time(), "layout_used": used, "overlay_applied": caption})
+                                     "created_at": time.time(), "layout_used": used, "overlay_applied": caption,
+                                     "style_used": ("legenda " if subs_on and words else "") + ("zoom" if zooms else "")})
         if used == "full" and (c.get("layout") or "auto") == "auto":
             log.info("🎥 %s: o streamer estava em tela cheia na câmera, então o corte saiu na tela toda (vertical)", c["channel_name"])
     except Exception as e:
@@ -355,11 +418,13 @@ class ChannelWorker(threading.Thread):
 
     # ------------------------------------------------------------ cortes
     def _run_jobs(self, final):
+        pad = float(settings.get("pad") or 0)     # sobra antes e depois (pra puxar mais no editor)
         with self._lock:
-            ready = [j for j in self.jobs if final or j["end"] <= self.analyzed_until]
+            ready = [j for j in self.jobs if final or j["end"] + pad <= self.analyzed_until]
             self.jobs = [j for j in self.jobs if j not in ready]
         for j in ready:
-            segs = [(s, p) for s, p, d in self.segments if s < j["end"] and s + d > j["start"] and p.exists()]
+            j["pad"] = pad
+            segs = [(s, p) for s, p, d in self.segments if s < j["end"] + pad and s + d > j["start"] - pad and p.exists()]
             if not segs:
                 continue
             tmp = C.CLIPS_DIR / str(self.id) / "tmp"
@@ -379,14 +444,16 @@ class ChannelWorker(threading.Thread):
         lst = h.with_suffix(".txt")
         try:
             lst.write_text("".join(f"file '{Path(p).resolve().as_posix()}'\n" for _, p in segs), encoding="utf-8")
-            start = max(job["start"], segs[0][0])
+            pad = job.get("pad", 0)
+            start = max(job["start"] - pad, segs[0][0])
             render.make_horizontal(["-f", "concat", "-safe", "0", "-i", str(lst)], h,
-                                   start - segs[0][0], job["end"] - start)
+                                   start - segs[0][0], job["end"] + pad - start)
+            cs, ce = max(0.0, job["start"] - start), job["end"] - start     # onde está o corte dentro do vídeo guardado
             cam = (db.query("SELECT cam FROM channels WHERE id=?", (self.id,)) or [{}])[0].get("cam")
             prev = db.query("SELECT title, overlay FROM clips WHERE channel_name=? ORDER BY created_at DESC LIMIT 60", (self.name,))
             gain = max([float(x) for x in __import__("re").findall(r"áudio \+(\d+) dB", " ".join(job["reasons"]))] or [0])
-            speech = transcribe.transcribe(h)   # o que o streamer falou no corte
-            peak_rel = job["peak"] - start
+            spoken, speech, words = listen(h, cs, ce)   # o que o streamer falou (só o pedaço do corte conta pra nota)
+            peak_rel = job["peak"] - start - cs
             q = quality.evaluate(job["score"], speech, peak_rel)
             manual = "corte manual" in job["reasons"]
             thr = float(settings.get("discard_below") or 0)
@@ -404,8 +471,9 @@ class ChannelWorker(threading.Thread):
                 "reasons": " · ".join(list(job["reasons"]) + q["reasons"]) or "pico detectado", "file_h": rel(h),
                 "platform": self.platform, "url": self.url, "cam": cam, "rendering": 1, "source": "live",
                 "features": json.dumps(q["features"]) if q["features"] else None,
-                "signal_score": q["signal"], "content_score": q["content"], **m})
-            render_vertical_for(clip_id)
+                "signal_score": q["signal"], "content_score": q["content"], **m,
+                **extra_fields(h, cs, ce, job["peak"] - start, spoken, words)})
+            after_insert(clip_id)
             log.info("✂ corte pronto: %s (nota %.1f)", name, q["final"])
         except Exception:
             log.exception("falha ao gerar corte %s", name)

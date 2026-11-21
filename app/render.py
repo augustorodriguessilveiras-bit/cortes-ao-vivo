@@ -193,6 +193,119 @@ def caption_png(text, out):
     return band_h
 
 
+# ------------------------------------------------------------ legenda palavra por palavra
+SUB_YELLOW = (255, 221, 51, 255)
+_PUNCT = re.compile(r"[\"“”«»(),.;:…]+")
+
+
+def _clean_word(w):
+    w = _PUNCT.sub("", _EMOJI.sub("", w or "")).strip().upper()
+    return w
+
+
+def sub_chunks(words, ts, te, max_words=3, max_chars=16):
+    """Agrupa as palavras em pedacinhos de até 3 palavras (o que cabe na tela de uma vez). Tempos contando do ts."""
+    ws = [(max(0.0, a - ts), min(te, b) - ts, _clean_word(w)) for a, b, w in (words or []) if b > ts and a < te]
+    ws = [w for w in ws if w[2]]
+    chunks, cur = [], []
+    for w in ws:
+        txt = " ".join(x[2] for x in cur + [w])
+        if cur and (len(cur) >= max_words or len(txt) > max_chars or w[0] - cur[-1][1] > 0.5):
+            chunks.append(cur)
+            cur = []
+        cur.append(w)
+    if cur:
+        chunks.append(cur)
+    return chunks
+
+
+def sub_png(chunk, hi, out):
+    """Pedacinho da legenda: letras brancas com contorno preto, a palavra falada agora em amarelo."""
+    size = int(W * 0.078)
+    font = _font(size)
+    d0 = ImageDraw.Draw(Image.new("RGB", (10, 10)))
+    words = [w[2] for w in chunk]
+    space = d0.textlength(" ", font=font)
+    while sum(d0.textlength(w, font=font) for w in words) + space * (len(words) - 1) > W * 0.9 and size > 40:
+        size -= 4
+        font = _font(size)
+        space = d0.textlength(" ", font=font)
+    stroke = max(4, size // 9)
+    hgt = int(size * 1.6)
+    img = Image.new("RGBA", (W, hgt), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    total = sum(d.textlength(w, font=font) for w in words) + space * (len(words) - 1)
+    x = (W - total) / 2
+    for i, w in enumerate(words):
+        d.text((x, hgt / 2), w, font=font, anchor="lm", fill=SUB_YELLOW if i == hi else (255, 255, 255, 255),
+               stroke_width=stroke, stroke_fill=(0, 0, 0, 255))
+        x += d.textlength(w, font=font) + space
+    img.save(out)
+    return hgt
+
+
+def subs_track(words, ts, te, base):
+    """
+    Monta a legenda inteira como uma sequência de imagens com tempo (entra no ffmpeg como um vídeo transparente).
+    Retorna (lista_concat, altura, arquivos criados) ou None se não tiver palavra.
+    """
+    chunks = sub_chunks(words, ts, te)
+    if not chunks:
+        return None
+    dur = te - ts
+    base = Path(base)
+    files = []
+    blank = base.with_name(base.name + ".sub_vazio.png")
+    hgt = None
+    events = []          # (início, fim, arquivo)
+    n = 0
+    for ci, ch in enumerate(chunks):
+        nxt = chunks[ci + 1][0][0] if ci + 1 < len(chunks) else dur
+        end_chunk = min(nxt, ch[-1][1] + 0.35)
+        for wi, w in enumerate(ch):
+            f = base.with_name(f"{base.name}.sub{n}.png")
+            n += 1
+            hgt = sub_png(ch, wi, f)
+            files.append(f)
+            a = w[0] if wi else min(w[0], ch[0][0])
+            b = ch[wi + 1][0] if wi + 1 < len(ch) else end_chunk
+            events.append((a, max(b, a + 0.06), f))
+    Image.new("RGBA", (W, hgt), (0, 0, 0, 0)).save(blank)
+    files.append(blank)
+    lines, t = [], 0.0
+    for a, b, f in events:
+        a = max(a, t)
+        if b <= a:
+            continue
+        if a - t > 0.01:
+            lines += [f"file '{blank.resolve().as_posix()}'", f"duration {a - t:.3f}"]
+        lines += [f"file '{Path(f).resolve().as_posix()}'", f"duration {b - a:.3f}"]
+        t = b
+    lines += [f"file '{blank.resolve().as_posix()}'", f"duration {max(0.1, dur - t):.3f}",
+              f"file '{blank.resolve().as_posix()}'"]
+    lst = base.with_name(base.name + ".subs.txt")
+    lst.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    files.append(lst)
+    return lst, hgt, files
+
+
+def zoom_expr(zooms, amount=0.16):
+    """Expressão do zoom rápido nos momentos de reação (entra em 0,2 s, fica ~1,4 s e sai em 0,4 s)."""
+    parts = [f"min(1,max(0,(in_time-{t - 0.15:.2f})/0.2))*min(1,max(0,({t + 1.6:.2f}-in_time)/0.4))" for t in zooms]
+    return f"1+{amount}*min(1,{'+'.join(parts)})"
+
+
+def fps_of(path):
+    try:
+        r = run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=r_frame_rate",
+                 "-of", "csv=p=0", str(path)])
+        a, b = (r.stdout.strip().split("/") + ["1"])[:2]
+        f = float(a) / float(b)
+        return r.stdout.strip() if 10 <= f <= 120 else "30"
+    except Exception:
+        return "30"
+
+
 # ------------------------------------------------------------ marca d'água
 def watermark_png(text, out, width, frac=0.034):
     """Selo legível com o texto (ex: kick.com/orenatovicente): fundo escuro, texto branco grosso."""
@@ -474,13 +587,15 @@ def detect_layout(h_path, cam):
 
 
 def vertical_filter(vw, vh, layout, cam, focus_x, cap_h, cap_secs, dur=0, wm_idx=None, wm_y=0,
-                    cap_win=None, cap_yc=None, wm_xc=None, wm_pre=""):
+                    cap_win=None, cap_yc=None, wm_xc=None, wm_pre="", zooms=None, fps="30", sub_idx=None, sub_y=None):
     """Monta o filtro do ffmpeg pro formato escolhido, com a faixa do título se tiver."""
+    zp = lambda w, h: (f",zoompan=z='{zoom_expr(zooms)}':x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':d=1:s={w}x{h}:fps={fps}"
+                       if zooms else "")
     if layout == "full":
         # tela cheia: recorte vertical da imagem inteira, centrado no streamer
         cw = min(even(vh * W / H), even(vw))
         cx = min(max(0, focus_x * vw - cw / 2), vw - cw)
-        f = f"[0:v]crop={cw}:{even(vh)}:{int(cx)}:0,scale={W}:{H},setsar=1[base]"
+        f = f"[0:v]crop={cw}:{even(vh)}:{int(cx)}:0,scale={W}:{H},setsar=1{zp(W, H)}[base]"
         y = int(H * 0.70) - cap_h // 2
     elif layout == "cam" and cam:
         cx, cy, cw, ch = cam["x"] * vw, cam["y"] * vh, cam["w"] * vw, cam["h"] * vh
@@ -495,14 +610,14 @@ def vertical_filter(vw, vh, layout, cam, focus_x, cap_h, cap_secs, dur=0, wm_idx
             else:
                 g[0] = min(vw - g[2], max(g[0], cx + cw))
         crop = lambda r: f"crop={even(r[2])}:{even(r[3])}:{int(r[0])}:{int(r[1])}"
-        f = (f"[0:v]split=2[a][b];[a]{crop(a)},scale={W}:{th},setsar=1[top];"
+        f = (f"[0:v]split=2[a][b];[a]{crop(a)},scale={W}:{th},setsar=1{zp(W, th)}[top];"
              f"[b]{crop(g)},scale={W}:{bh},setsar=1[bot];"
              f"[top][bot]vstack=2,drawbox=x=0:y={th - 3}:w={W}:h=6:color=black:t=fill[base]")
         y = th - cap_h // 2
     else:
         fit_h = even(W * vh / vw)
         f = (f"[0:v]split=2[a][b];[a]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},"
-             f"boxblur=25:5,eq=brightness=-0.08[bg];[b]scale={W}:{fit_h},setsar=1[fg];"
+             f"boxblur=25:5,eq=brightness=-0.08[bg];[b]scale={W}:{fit_h},setsar=1{zp(W, fit_h)}[fg];"
              f"[bg][fg]overlay=0:{(H - fit_h) // 2}[base]")
         y = (H - fit_h) // 2 - cap_h // 2
     if cap_yc is not None:          # posição escolhida no editor (centro da faixa)
@@ -520,18 +635,22 @@ def vertical_filter(vw, vh, layout, cam, focus_x, cap_h, cap_secs, dur=0, wm_idx
               f"[base][cap]overlay=0:{y}:shortest=1:enable='between(t,{a:.2f},{b:.2f})'[v0]")
     else:
         f += ";[base]null[v0]"
+    if sub_idx is not None:          # legenda palavra por palavra
+        f += f";[{sub_idx}:v]format=rgba[subs];[v0][subs]overlay=0:{int(sub_y)}:eof_action=pass[v0s]"
+    else:
+        f += ";[v0]null[v0s]"
     if wm_idx is not None:   # marca d'água por cima de tudo, o corte inteiro
         x = f"{int(wm_xc)}-w/2" if wm_xc is not None else "(W-w)/2"
-        f += f";[{wm_idx}:v]{wm_pre}format=rgba[wm];[v0][wm]overlay='max(0,min(W-w,{x}))':'max(0,min(H-h,{wm_y}))':shortest=1[v1]"
+        f += f";[{wm_idx}:v]{wm_pre}format=rgba[wm];[v0s][wm]overlay='max(0,min(W-w,{x}))':'max(0,min(H-h,{wm_y}))':shortest=1[v1]"
     else:
-        f += ";[v0]null[v1]"
+        f += ";[v0s]null[v1]"
     # escurece suavemente no último meio segundo, pro corte não acabar do nada
     f += f";[v1]fade=t=out:st={max(0.0, dur - 0.6):.2f}:d=0.6[v]" if dur > 3 else ";[v1]null[v]"
     return f
 
 
 def make_vertical(h_path, out, thumb, cam=None, caption="", cap_secs=10, layout="auto", watermark=None,
-                  trim=None, cap_win=None, cap_y=None, wm_pos=None, audio_mode="auto"):
+                  trim=None, cap_win=None, cap_y=None, wm_pos=None, audio_mode="auto", subs=None, sub_y=None, zooms=None):
     """
     Monta o vertical. layout: 'auto' (decide sozinho), 'cam', 'full' ou 'game'. Retorna o formato usado.
     trim: (início, fim) em segundos dentro do corte · cap_win: (aparece, some) do texto, contando do início do corte
@@ -583,15 +702,26 @@ def make_vertical(h_path, out, thumb, cam=None, caption="", cap_secs=10, layout=
         wx, wy = wm_pos if wm_pos else (0.5, 0.80)
         wm_idx, wm_y, wm_xc = (2 if cap_h else 1), int(H * wy) - wm_h // 2, W * wx
         wm_args = ["-loop", "1", "-t", f"{dur:.2f}", "-i", str(wm_png)]
+    sub_args, sub_files, sub_idx, sub_yc = [], [], None, None
+    st = subs_track(subs, ts, te, Path(out).with_suffix("")) if subs else None
+    if st:
+        lst, sh, sub_files = st
+        sub_idx = 1 + (1 if cap_h else 0) + (1 if wm_args else 0)
+        sub_args = ["-f", "concat", "-safe", "0", "-i", str(lst)]
+        # lugar padrão: no meio da gameplay (sem brigar com a faixa do título nem com a marca d'água)
+        yc = sub_y if sub_y is not None else (0.56 if layout == "full" else 0.64)
+        sub_yc = max(0, min(H - sh, int(H * yc - sh / 2)))
     flt = vertical_filter(vw, vh, layout, cam, focus_x, cap_h, cap_secs, dur, wm_idx, wm_y,
-                          cap_win=cap_win, cap_yc=(cap_y * H if cap_y is not None else None), wm_xc=wm_xc, wm_pre=wm_pre)
+                          cap_win=cap_win, cap_yc=(cap_y * H if cap_y is not None else None), wm_xc=wm_xc, wm_pre=wm_pre,
+                          zooms=[z for z in (zooms or []) if z < dur - 1], fps=fps_of(h_path) if zooms else "30",
+                          sub_idx=sub_idx, sub_y=sub_yc)
     afx, ainfo = audio_fix(h_path, ts, dur, audio_mode)
     afx += [f"afade=t=out:st={max(0.0, dur - 0.6):.2f}:d=0.6"] if dur > 3 else []
     afade = ["-af", ",".join(afx)] if afx else []
     inputs = ["-ss", f"{ts:.2f}", "-t", f"{dur:.2f}", "-i", str(h_path)]
     if cap_h:
         inputs += ["-loop", "1", "-t", f"{dur:.2f}", "-i", str(cap_png)]
-    inputs += wm_args
+    inputs += wm_args + sub_args
     try:
         run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", *inputs, "-filter_complex", flt,
              "-map", "[v]", "-map", "0:a:0?", *venc(), *afade, *AENC, "-movflags", "+faststart", str(out)],
@@ -601,5 +731,7 @@ def make_vertical(h_path, out, thumb, cam=None, caption="", cap_secs=10, layout=
     finally:
         cap_png.unlink(missing_ok=True)
         wm_png.unlink(missing_ok=True)
+        for f in sub_files:
+            Path(f).unlink(missing_ok=True)
     make_vertical.last_audio = ainfo
     return layout

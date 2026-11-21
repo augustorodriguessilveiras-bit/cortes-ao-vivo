@@ -117,6 +117,20 @@ Instale nos dois PCs do mesmo jeito: Python, extrair o zip e `INICIAR.bat`.
 
 ---
 
+## Recursos dos cortes
+
+- **Sobra antes e depois:** cada corte guarda 30s a mais antes e depois (muda em Ajustes). No ✂ Editar corte, puxe
+  "Começa em" pra trás ou "Termina em" pra frente (ou use ⏪ +5s / +5s ⏩) pra pegar mais do momento.
+- **Estilo Padrão ou ✨ Dinâmico** (no cartão de cada corte, ou pra todos em Ajustes): o dinâmico tem legenda palavra
+  por palavra (a palavra falada fica amarela), zoom rápido na reação e começo/fim no ponto certo da fala.
+  A legenda precisa do reconhecimento de fala instalado.
+- **📲 Onde já postou:** marque TikTok, Reels e Shorts em cada corte e anote as visualizações. Quando marca as 3,
+  o corte vira "postado". As views ensinam o programa e aparecem em **📈 O que dá mais view**.
+- **♻ Corte repetido:** se o mesmo momento for cortado duas vezes (ex: da live e do VOD), o cartão avisa.
+- **🎬 Compilado pro YouTube:** junta cortes aprovados num vídeo deitado com o título de cada momento e os capítulos
+  prontos pra descrição.
+- **📤 Enviar um corte seu:** manda um trecho que você cortou e ele sai no mesmo formato dos automáticos.
+
 ## Regras por streamer (campeonatos)
 Alguns canais têm regras próprias, aplicadas sozinhas só nos cortes deles (arquivo `app/rules.py`). Os outros canais seguem normais.
 

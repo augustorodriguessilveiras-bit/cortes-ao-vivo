@@ -17,7 +17,7 @@ import json
 from pathlib import Path
 
 from . import db, meta, quality, render, settings, sources, transcribe
-from .recorder import clip_paths, rel, render_vertical_for
+from .recorder import after_insert, clip_paths, extra_fields, listen, rel, render_vertical_for
 
 log = logging.getLogger("vod")
 SR = 8000
@@ -162,8 +162,11 @@ def _process(vod_id):
         if vod_id in _stop_ids:
             raise RuntimeError("cancelado")
         _set(vod_id, status=f"montando corte {i} de {len(peaks)}", progress=0.7 + 0.3 * (i - 1) / len(peaks))
-        start = max(0, t - cfg["before"])
-        dur = cfg["before"] + cfg["after"]
+        pad = float(cfg.get("pad") or 0)          # sobra antes e depois (pra puxar mais no editor)
+        core0 = max(0, t - cfg["before"])
+        start = max(0, core0 - pad)
+        cs = core0 - start
+        dur = cs + cfg["before"] + cfg["after"] + pad
         hh, mm, ss = t // 3600, t % 3600 // 60, t % 60
         clip_name = f"{name}_vod{vod_id}_{hh:02d}h{mm:02d}m{ss:02d}s"
         h, vpath, thumb = clip_paths(f"vod{vod_id}", clip_name)
@@ -174,13 +177,15 @@ def _process(vod_id):
         render.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", *args, "-t", f"{dur:.2f}", *maps,
                     *render.venc(), *render.AENC, "-movflags", "+faststart", str(h)], timeout=1800)
         prev = db.query("SELECT title, overlay FROM clips WHERE channel_name=? ORDER BY created_at DESC LIMIT 60", (name,))
-        if t in evals:
-            q, speech = evals[t]
+        ce = cs + cfg["before"] + cfg["after"]
+        lines, speech, words = listen(h, cs, ce)   # o que o streamer falou (com o tempo de cada palavra)
+        if t in evals and (speech is None or evals[t][0]["known"]):
+            q = evals[t][0]
+            speech = speech if speech is not None else evals[t][1]
         else:
-            speech = transcribe.transcribe(h)   # o que o streamer falou no corte
-            q = quality.evaluate(score, speech, t - start)
+            q = quality.evaluate(score, speech, t - core0)
         m = meta.make_meta(name, v["platform"], channel_url, [], gain=gain, avoid=[r["title"] for r in prev],
-                           speech=speech or [], peak_rel=t - start, avoid_hooks=[r["overlay"] for r in prev],
+                           speech=speech or [], peak_rel=t - core0, avoid_hooks=[r["overlay"] for r in prev],
                            theme=theme)
         clip_id = db.insert("clips", {
             "channel_id": 0, "channel_name": name, "peak_time": time.time(), "created_at": time.time(),
@@ -188,8 +193,9 @@ def _process(vod_id):
             "reasons": " · ".join([f"VOD {hh:02d}:{mm:02d}:{ss:02d}", f"áudio +{gain:.0f} dB"] + q["reasons"]), "file_h": rel(h),
             "platform": v["platform"], "url": channel_url, "cam": cam, "rendering": 1,
             "source": "vod", "vod_id": vod_id, "features": json.dumps(q["features"]) if q["features"] else None,
-            "signal_score": q["signal"], "content_score": q["content"], **m})
-        render_vertical_for(clip_id)
+            "signal_score": q["signal"], "content_score": q["content"], **m,
+            **extra_fields(h, cs, ce, t - start, lines, words)})
+        after_insert(clip_id)
         log.info("✂ corte %d de %d do VOD de %s pronto", i, len(peaks), name)
     _set(vod_id, status=f"pronto: {len(peaks)} cortes", progress=1)
     log.info("🎬 VOD de %s pronto: %d cortes", name, len(peaks))

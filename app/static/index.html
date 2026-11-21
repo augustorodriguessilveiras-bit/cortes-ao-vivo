@@ -143,6 +143,27 @@ details.meta[open] summary{margin-bottom:6px}
 .timeline{position:relative;height:30px;background:var(--panel2);border-radius:8px;cursor:pointer}
 .timeline .sel{position:absolute;top:0;bottom:0;background:rgba(255,79,154,.25);border-left:3px solid var(--accent);border-right:3px solid var(--accent)}
 .timeline .cap{position:absolute;bottom:2px;height:6px;background:var(--accent2);border-radius:3px}
+.timeline .core{position:absolute;top:0;bottom:0;border-left:2px dashed rgba(255,255,255,.45);border-right:2px dashed rgba(255,255,255,.45);pointer-events:none}
+.timeline .padl,.timeline .padr{position:absolute;top:0;bottom:0;background:repeating-linear-gradient(45deg,rgba(255,255,255,.05) 0 6px,transparent 6px 12px);pointer-events:none}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:99px;overflow:hidden}
+.seg button{border:0;border-radius:0;padding:5px 12px;font-size:12.5px;background:var(--panel2);color:var(--muted)}
+.seg button.on{background:var(--accent);color:#fff}
+.stylebox,.postbox{display:flex;flex-direction:column;gap:6px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.stylebox .lbl,.postbox .lbl{font-size:12px;color:var(--muted)}
+.plats{display:flex;flex-wrap:wrap;gap:6px}
+.plat.on{border-color:var(--ok);color:var(--ok)}
+.vws{display:flex;flex-wrap:wrap;gap:8px}
+.vws label{display:flex;align-items:center;gap:5px;font-size:12.5px;color:var(--muted)}
+.vws input{width:96px;padding:4px 7px;font-size:13px}
+.cmplist{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px;max-height:420px;overflow:auto}
+.cmpit{display:flex;gap:8px;align-items:center;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:6px;font-size:12.5px;cursor:pointer}
+.cmpit img{width:44px;height:78px;object-fit:cover;border-radius:6px;background:#000;flex:none}
+.cmpit input{flex:none}
+.cmpdone{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:6px}
+.instab{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;align-items:start}
+.instab > div{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:13px}
+.instab b{display:block;margin-bottom:4px;color:var(--text)}
+.instab .bar{height:6px;background:var(--accent);border-radius:3px;margin:2px 0 6px}
 .timeline .head{position:absolute;top:-3px;bottom:-3px;width:2px;background:#fff}
 #edText{width:100%;min-height:60px;font-weight:700;text-transform:uppercase;font-size:14px;padding:8px 10px;border-radius:8px;background:var(--bg)}
 #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);padding:10px 16px;border-radius:10px;opacity:0;transition:opacity .3s;pointer-events:none;max-width:90vw;z-index:60}
@@ -202,6 +223,8 @@ details.meta[open] summary{margin-bottom:6px}
     <label><input type="checkbox" id="posted_cleanup"> Apagar o vídeo quando marcar como postado</label>
     <label>Texto aparece por <input type="range" id="ov_secs" min="3" max="41" step="1"><output></output></label>
     <label>Volume do áudio <select id="audio_mode"><option value="auto">Automático (só mexe se estiver muito baixo ou estourando)</option><option value="off">Original da live (nunca mexer)</option></select></label>
+    <label>Sobra guardada antes e depois do corte <input type="range" id="pad" min="0" max="60" step="5"><output></output></label>
+    <label>Estilo dos cortes novos <select id="style"><option value="padrao">Padrão (como sempre foi)</option><option value="dinamico">✨ Dinâmico (legenda palavra por palavra, zoom na reação, começo/fim esperto)</option></select></label>
     <label class="wide">Hashtags padrão <input type="text" id="tags"></label>
   </div>
   <p class="muted">Muito corte ruim? Aumente a nota mínima. Poucos cortes? Diminua.</p>
@@ -215,6 +238,25 @@ details.meta[open] summary{margin-bottom:6px}
       <button class="small" data-clean="lixo">Apagar arquivos esquecidos (sobras e temporários)</button>
       <button class="small" id="stRefresh">↻ Atualizar</button>
     </div>
+  </div>
+
+  <h2>📈 O que dá mais view</h2>
+  <div class="settings" id="insBox" style="flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:10px"><div class="muted">Carregando…</div></div>
+
+  <h2>🎬 Compilado pro YouTube</h2>
+  <div class="settings" style="flex-direction:column;align-items:stretch;gap:10px">
+    <div class="muted">Junta vários cortes num vídeo deitado (16:9) pro YouTube: o título de cada momento aparece no começo dele, com a marca d'água do campeonato e os capítulos prontos pra descrição. Só aparecem cortes <b style="color:var(--text)">aprovados ou postados que ainda têm o vídeo no PC</b>.</div>
+    <div class="add">
+      <select id="cmpChan"><option value="">Todos os streamers</option></select>
+      <select id="cmpDays"><option value="7">Últimos 7 dias</option><option value="14">Últimos 14 dias</option><option value="30">Últimos 30 dias</option></select>
+      <button class="small" id="cmpLoad">↻ Mostrar cortes</button>
+    </div>
+    <div id="cmpList" class="cmplist"></div>
+    <div class="add">
+      <input type="text" id="cmpTitle" placeholder="Título do compilado (deixe vazio que o programa cria)" autocomplete="off">
+      <button class="primary" id="cmpGo">🎬 Montar compilado</button>
+    </div>
+    <div id="cmpItems" style="display:flex;flex-direction:column;gap:8px"></div>
   </div>
 
   <h2>Cortes</h2>
@@ -263,12 +305,20 @@ details.meta[open] summary{margin-bottom:6px}
       </div>
       <div class="edctl">
         <div class="edrow"><button class="small primary" id="edPlay">▶ Tocar</button><span id="edTime">0:00</span></div>
-        <div class="timeline" id="edTl" title="Clique pra ir pra esse ponto"><div class="sel" id="edSel"></div><div class="cap" id="edCapBar"></div><div class="head" id="edHead"></div></div>
+        <div class="timeline" id="edTl" title="Clique pra ir pra esse ponto"><div class="padl" id="edPadL"></div><div class="padr" id="edPadR"></div><div class="core" id="edCore"></div><div class="sel" id="edSel"></div><div class="cap" id="edCapBar"></div><div class="head" id="edHead"></div></div>
 
         <h3>✂ Cortar o vídeo</h3>
         <div class="edrow"><label>Começa em <input type="range" id="edTs" step="0.1"></label><output id="edTsO"></output></div>
         <div class="edrow"><label>Termina em <input type="range" id="edTe" step="0.1"></label><output id="edTeO"></output></div>
         <div class="edrow"><button class="small" id="edSetS">⟦ Começar aqui</button><button class="small" id="edSetE">Terminar aqui ⟧</button><span>Duração: <b id="edDur" style="color:var(--text)"></b></span></div>
+        <div class="edrow"><button class="small" id="edMoreS">⏪ +5s antes</button><button class="small" id="edMoreE">+5s depois ⏩</button><button class="small" id="edCoreBack">Voltar pro corte normal</button></div>
+        <div class="muted" id="edPadInfo" style="font-size:12px"></div>
+
+        <h3>💬 Legenda e zoom</h3>
+        <label class="switch"><input type="checkbox" id="edSubs"> Legenda palavra por palavra (a palavra falada fica amarela)</label>
+        <label class="switch"><input type="checkbox" id="edZoom"> Zoom rápido na hora da reação</label>
+        <div class="edrow">Lugar da legenda: <button class="small" data-suby="0.3">Mais em cima</button><button class="small" data-suby="def">Padrão</button><button class="small" data-suby="0.76">Mais embaixo</button><span class="muted" id="edSubYO"></span></div>
+        <div class="muted" id="edSubsInfo" style="font-size:12px"></div>
 
         <h3>✏️ Texto</h3>
         <label class="switch"><input type="checkbox" id="edOn"> Texto no vídeo</label>
@@ -464,8 +514,8 @@ function renderLives(){
   sel.innerHTML = `<option value="">Todos os canais</option>` + names.map(n => `<option>${esc(n)}</option>`).join(""); sel.value = cur;
   const L = ST.learning;
   if (L) $("#learnInfo").innerHTML = L.ativo
-    ? `🧠 A nota já está aprendendo com você (${L.bons} aprovados/postados, ${L.ruins} excluídos).`
-    : `🧠 Aprendendo com você: ${L.bons} de 15 aprovados/postados e ${L.ruins} de 15 excluídos. Quando chegar nos dois, a nota passa a seguir o seu gosto.`;
+    ? `🧠 A nota já está aprendendo com você (${L.bons} bons, ${L.ruins} ruins${L.com_views ? `, ${L.com_views} com views anotadas` : ""}).`
+    : `🧠 Aprendendo com você: ${L.bons} de 15 bons (aprovados/postados) e ${L.ruins} de 15 ruins (excluídos). Quando chegar nos dois, a nota passa a seguir o seu gosto.${L.com_views ? ` ${L.com_views} cortes com views anotadas.` : " Anotar as views dos postados ajuda muito."}`;
   if (!ST.version){ showOldServer(); return; }
   const V = ST.version || {};
   $("#sys").textContent = `Versão ${V.local || "?"} · Vídeo: ${ST.encoder || "…"} · ${ST.disk_free_gb} GB livres`;
@@ -482,8 +532,8 @@ function renderLives(){
 let settingsBound = false, saveSet = null;
 function bindSettings(){
   if (settingsBound) return; settingsBound = true;
-  const fmt = { min_score: v => (+v).toFixed(1), discard_below: v => +v === 0 ? "nunca" : (+v).toFixed(1), dur: v => `${v}s (${Math.round(v * 2 / 3)}s antes do momento, ${v - Math.round(v * 2 / 3)}s depois)`, vod_max: v => v, ov_secs: v => +v > 40 ? "o vídeo todo" : v + "s" };
-  for (const id of ["min_score", "discard_below", "dur", "vod_max", "ov_secs", "ov_on", "tags", "audio_mode", "posted_cleanup"]){
+  const fmt = { pad: v => +v === 0 ? "nenhuma" : `${v}s antes e ${v}s depois`, style: v => v, min_score: v => (+v).toFixed(1), discard_below: v => +v === 0 ? "nunca" : (+v).toFixed(1), dur: v => `${v}s (${Math.round(v * 2 / 3)}s antes do momento, ${v - Math.round(v * 2 / 3)}s depois)`, vod_max: v => v, ov_secs: v => +v > 40 ? "o vídeo todo" : v + "s" };
+  for (const id of ["min_score", "discard_below", "dur", "vod_max", "ov_secs", "ov_on", "tags", "audio_mode", "posted_cleanup", "pad", "style"]){
     const el = $("#" + id), out = el.parentElement.querySelector("output"), val = ST.settings[id];
     if (el.type === "checkbox") el.checked = !!val; else el.value = val;
     if (out) out.textContent = fmt[id](val);
@@ -497,12 +547,27 @@ function bindSettings(){
 }
 
 /* ------------------------------------------------------------ cortes */
+const PLATS = [["tiktok", "TikTok"], ["reels", "Reels"], ["shorts", "Shorts"]];
+function styleBox(c){
+  const dyn = c.style === "dinamico";
+  return `<div class="stylebox"><span class="lbl">🎞 Estilo do vídeo</span>
+    <div><span class="seg"><button data-c="sty" data-v="padrao" data-id="${c.id}" class="${dyn ? "" : "on"}">Padrão</button><button data-c="sty" data-v="dinamico" data-id="${c.id}" class="${dyn ? "on" : ""}">✨ Dinâmico</button></span></div>
+    <span class="muted" style="font-size:12px">${dyn ? "Legenda palavra por palavra, zoom na reação e começo/fim no ponto certo." + (c.style_used != null && !/legenda/.test(c.style_used) && !c.rendering ? " (saiu sem legenda: precisa do reconhecimento de fala)" : "") : "Do jeito de sempre. Teste o ✨ Dinâmico pra comparar."}</span></div>`;
+}
+function postBox(c){
+  const P = c.posted_on || {}, V = c.views || {}, done = PLATS.filter(([p]) => P[p]), miss = PLATS.filter(([p]) => !P[p]);
+  return `<div class="postbox"><span class="lbl">📲 Onde já postou${done.length && miss.length ? ` · falta: ${miss.map(x => x[1]).join(", ")}` : ""}</span>
+    <div class="plats">${PLATS.map(([p, l]) => `<button class="small plat ${P[p] ? "on" : ""}" data-c="plat" data-p="${p}" data-id="${c.id}">${P[p] ? "✅" : "⬜"} ${l}</button>`).join("")}</div>
+    ${done.length ? `<div class="vws">${done.map(([p, l]) => `<label>👁 ${l} <input type="number" min="0" inputmode="numeric" data-views="${p}" data-id="${c.id}" value="${V[p] ?? ""}" placeholder="views"></label>`).join("")}</div>
+    <span class="muted" style="font-size:11.5px">Anote as visualizações depois de uns dias: o programa aprende o que dá mais view.</span>` : ""}
+  </div>`;
+}
 const openMeta = new Set();
 const dirty = new Map();   // edições ainda não salvas (não podem ser apagadas pelo painel se atualizando)
 let confirmDel = null, confirmPost = null, clipsKey = "";
 function renderClips(force){
   const el = $("#clips");
-  const key = JSON.stringify([confirmDel, confirmPost, clips.map(c => [c.id, c.rendering, c.status, c.created_at, c.title, c.warn, c.overlay_applied, c.yt_tags, c.files_deleted])]);
+  const key = JSON.stringify([confirmDel, confirmPost, clips.map(c => [c.id, c.rendering, c.status, c.created_at, c.title, c.warn, c.overlay_applied, c.yt_tags, c.files_deleted, c.style, c.posted_on, c.views, c.dup_of])]);
   if (!force && key === clipsKey) return;
   if (!force && el.contains(document.activeElement) && /INPUT|TEXTAREA/.test(document.activeElement.tagName)) return;
   if (!force && [...el.querySelectorAll("video")].some(v => !v.paused)) return;
@@ -525,8 +590,11 @@ function renderClips(force){
       ${c.layout_used ? `<div class="fmt">📐 Formato: ${{ cam: "câmera em cima + gameplay", full: "tela cheia (full cam)", game: "só gameplay" }[c.layout_used] || c.layout_used}${(c.layout || "auto") === "auto" ? " (automático)" : ""}</div>` : ""}
       ${c.audio_info ? `<div class="fmt">🔊 ${esc(c.audio_info)}</div>` : ""}
       ${c.warn ? `<div class="warn">⚠ ${esc(c.warn)}</div>` : ""}
+      ${c.dup ? `<div class="warn">♻ Parece o mesmo momento do corte "${esc((c.dup.title || "").slice(0, 60))}" (${esc(c.dup.status)}). Cuidado pra não postar duas vezes.</div>` : ""}
       ${c.chat_top ? `<div class="chatq">💬 "${esc(c.chat_top)}"</div>` : ""}
       ${c.rendering ? "" : `
+      ${gone ? "" : styleBox(c)}
+      ${postBox(c)}
       ${gone ? "" : `<div class="ovedit ${ovOn(c) ? "" : "off"}" id="ove${id}">
         <label class="switch"><input type="checkbox" data-ovon="${id}" ${ovOn(c) ? "checked" : ""}> Texto no vídeo</label>
         <div class="ovrow">
@@ -677,7 +745,8 @@ const frameObs = new IntersectionObserver(entries => {
     if (!e.isIntersecting) continue;
     const id = +e.target.dataset.id; frameObs.unobserve(e.target);
     if (frames.has(id)){ drawPreview(id); continue; }
-    fetch(`/api/clips/${id}/frame?t=1.5`).then(r => r.ok ? r.blob() : null).then(b => b && createImageBitmap(b))
+    const t0 = (clips.find(x => x.id === id) || {}).eff_ts || 0;
+    fetch(`/api/clips/${id}/frame?t=${(t0 + 1.5).toFixed(1)}`).then(r => r.ok ? r.blob() : null).then(b => b && createImageBitmap(b))
       .then(bmp => { if (bmp){ frames.set(id, bmp); drawPreview(id);
         while (frames.size > 30){ const k = frames.keys().next().value; frames.get(k)?.close?.(); frames.delete(k); } } }).catch(() => {});
   }
@@ -691,15 +760,19 @@ function openEditor(c){
   const v = document.createElement("video");
   v.src = `/media/${c.file_h}`; v.preload = "auto"; v.playsInline = true; v.crossOrigin = "anonymous";
   const secs = c.ov_secs ?? ST.settings.ov_secs ?? 10;
-  Object.assign(ED, { c, v, drag: null, ts: c.trim_start ?? 0, te: c.trim_end ?? null, on: ovOn(c), text: c.overlay || "",
+  const dynDef = c.style === "dinamico";
+  Object.assign(ED, { c, v, drag: null, ts: c.eff_ts ?? 0, te: c.eff_te ?? null, ts0: c.eff_ts ?? 0, te0: c.eff_te ?? null,
+    subs: c.subs_on != null ? !!c.subs_on : dynDef, zoom: c.zoom_on != null ? !!c.zoom_on : dynDef, dynDef, subY: c.sub_y ?? null,
+    on: ovOn(c), text: c.overlay || "",
     ca: c.cap_start ?? 0, cb: c.cap_end ?? (secs > 40 ? 9999 : secs), capY: c.cap_y ?? null,
     wm: (c.rules && (c.rules.watermark || c.rules.lower_url))
       ? { x: c.wm_x ?? (c.rules.lower_url ? c.rules.lower_x ?? 0.5 : 0.5), y: c.wm_y ?? (c.rules.lower_url ? c.rules.lower_y ?? 0.8 : 0.8) } : null });
   if (ED.wm) Object.assign(ED.wm, c.rules.watermark ? { text: c.rules.watermark } : { lowerOf: c.rules });
   $("#edWmBox").hidden = !ED.wm;
   $("#edOn").checked = ED.on; $("#edText").value = ED.text;
+  $("#edSubs").checked = ED.subs; $("#edZoom").checked = ED.zoom; edSubInfo();
   v.addEventListener("loadedmetadata", () => {
-    const d = v.duration; ED.dur = d; if (ED.te == null || ED.te > d) ED.te = d;
+    const d = v.duration; ED.dur = d; if (ED.te == null || ED.te > d) ED.te = d; if (ED.te0 == null || ED.te0 > d) ED.te0 = d;
     for (const id of ["edTs", "edTe"]){ $("#" + id).max = d.toFixed(1); }
     v.currentTime = ED.ts + Math.min(1, (ED.te - ED.ts) / 2); syncEditor();
   }, { once: true });
@@ -719,6 +792,13 @@ function syncEditor(){
   $("#edCaO").textContent = `${ED.ca.toFixed(1)} s`; $("#edCbO").textContent = ED.cb >= L - 0.05 ? "no fim" : `${ED.cb.toFixed(1)} s`;
   const pct = t => `${(t / ED.dur * 100).toFixed(2)}%`;
   Object.assign($("#edSel").style, { left: pct(ED.ts), width: pct(L) });
+  const c = ED.c, cs = c.core_start ?? 0, ce = c.core_end ?? ED.dur, hasPad = cs > 1 || ce < ED.dur - 1;
+  Object.assign($("#edCore").style, { left: pct(cs), width: pct(Math.max(0, Math.min(ce, ED.dur) - cs)), display: hasPad ? "" : "none" });
+  Object.assign($("#edPadL").style, { left: "0", width: pct(cs), display: hasPad ? "" : "none" });
+  Object.assign($("#edPadR").style, { left: pct(Math.min(ce, ED.dur)), width: pct(Math.max(0, ED.dur - ce)), display: hasPad ? "" : "none" });
+  $("#edPadInfo").innerHTML = hasPad
+    ? `As partes listradas são a <b style="color:var(--text)">sobra guardada</b> (${Math.round(cs)}s antes e ${Math.round(Math.max(0, ED.dur - ce))}s depois). O tracejado é onde o corte foi feito. Puxe "Começa em" pra trás ou "Termina em" pra frente pra pegar mais.`
+    : `Esse corte não tem sobra guardada (só os cortes novos têm). Dá pra cortar dentro dele normalmente.`;
   Object.assign($("#edCapBar").style, { left: pct(ED.ts + ED.ca), width: pct(Math.max(0, Math.min(ED.cb, L) - ED.ca)), display: ED.on ? "" : "none" });
 }
 function edLoop(){
@@ -751,6 +831,18 @@ $("#edTe").oninput = e => { ED.te = Math.max(+e.target.value, ED.ts + 1); ED.v.c
 $("#edSetS").onclick = () => { ED.ts = Math.min(ED.v.currentTime, ED.te - 1); syncEditor(); };
 $("#edSetE").onclick = () => { ED.te = Math.max(ED.v.currentTime, ED.ts + 1); syncEditor(); };
 $("#edOn").onchange = e => { ED.on = e.target.checked; syncEditor(); };
+function edSubInfo(){
+  const c = ED.c; if (!c) return;
+  $("#edSubYO").textContent = ED.subY == null ? "(padrão)" : ED.subY < 0.5 ? "(mais em cima)" : "(mais embaixo)";
+  $("#edSubsInfo").textContent = !ED.subs ? "" : c.has_words ? "A legenda aparece no vídeo pronto (aqui na prévia ela não aparece)."
+    : "Esse corte ainda não tem as palavras guardadas: ao salvar, o programa ouve o vídeo de novo (precisa do reconhecimento de fala instalado).";
+}
+$("#edSubs").onchange = e => { ED.subs = e.target.checked; edSubInfo(); };
+$("#edZoom").onchange = e => { ED.zoom = e.target.checked; };
+document.querySelectorAll("[data-suby]").forEach(b => b.onclick = () => { ED.subY = b.dataset.suby === "def" ? null : +b.dataset.suby; edSubInfo(); });
+$("#edMoreS").onclick = () => { ED.ts = Math.max(0, ED.ts - 5); ED.v.currentTime = ED.ts; syncEditor(); };
+$("#edMoreE").onclick = () => { ED.te = Math.min(ED.dur, ED.te + 5); ED.v.currentTime = Math.max(ED.ts, ED.te - 3); syncEditor(); };
+$("#edCoreBack").onclick = () => { const c = ED.c; ED.ts = c.core_start ?? ED.ts0; ED.te = Math.min(ED.dur, c.core_end ?? ED.te0); ED.v.currentTime = ED.ts; syncEditor(); };
 $("#edText").oninput = e => { ED.text = e.target.value; };
 $("#edCa").oninput = e => { ED.ca = +e.target.value; ED.v.currentTime = ED.ts + ED.ca; syncEditor(); };
 $("#edCb").oninput = e => { ED.cb = +e.target.value >= clipLen() - 0.05 ? 9999 : +e.target.value; ED.v.currentTime = ED.ts + Math.min(ED.cb, clipLen()) - 0.2; syncEditor(); };
@@ -778,8 +870,11 @@ $("#edCanvas").addEventListener("pointerup", () => { ED.drag = null; $("#edCanva
 async function saveEditor(reset){
   const c = ED.c; if (!c) return;
   const body = reset
-    ? { trim_start: null, trim_end: null, cap_start: null, cap_end: null, cap_y: null, wm_x: null, wm_y: null }
-    : { trim_start: ED.ts > 0.05 ? +ED.ts.toFixed(2) : null, trim_end: ED.te < ED.dur - 0.05 ? +ED.te.toFixed(2) : null,
+    ? { trim_start: null, trim_end: null, cap_start: null, cap_end: null, cap_y: null, wm_x: null, wm_y: null, subs_on: null, zoom_on: null, sub_y: null }
+    : { ...(Math.abs(ED.ts - ED.ts0) < 0.05 && Math.abs(ED.te - ED.te0) < 0.05
+          ? { trim_start: null, trim_end: null }          // não mexeu: continua seguindo o estilo do corte
+          : { trim_start: +ED.ts.toFixed(2), trim_end: +ED.te.toFixed(2) }),
+        subs_on: ED.subs === ED.dynDef ? null : ED.subs, zoom_on: ED.zoom === ED.dynDef ? null : ED.zoom, sub_y: ED.subY,
         cap_start: +ED.ca.toFixed(2), cap_end: ED.cb >= 9000 ? 9999 : +ED.cb.toFixed(2),
         cap_y: ED.capY, wm_x: ED.wm ? +ED.wm.x.toFixed(3) : null, wm_y: ED.wm ? +ED.wm.y.toFixed(3) : null,
         overlay: ED.text, overlay_on: ED.on };
@@ -861,7 +956,21 @@ $("#clips").addEventListener("click", async e => {
       toast(ovOn(c) ? "Refazendo o vídeo com o texto… leva 1 a 2 minutos." : "Refazendo o vídeo sem texto… leva 1 a 2 minutos.");
       c.rendering = 1; renderClips(true); return;
     }
-    if (a === "cam") return openCam({ kind: "clip", id, name: c.channel_name, cam: c.cam, overlay: c.overlay, layout: c.layout || "auto", layoutUsed: c.layout_used });
+    if (a === "sty"){
+      if ((c.style || "padrao") === b.dataset.v) return;
+      const r = await post(`/api/clips/${id}/style`, { style: b.dataset.v });
+      c.style = b.dataset.v; c.rendering = 1; frames.delete(id); renderClips(true);
+      toast(r.aviso || (b.dataset.v === "dinamico" ? "Refazendo no estilo ✨ Dinâmico… (1 a 3 min)" : "Voltando pro estilo padrão… (1 a 2 min)"), r.aviso ? 8000 : 4000);
+      return;
+    }
+    if (a === "plat"){
+      const p = b.dataset.p, on = !(c.posted_on || {})[p];
+      const r = await post(`/api/clips/${id}/posted`, { platform: p, on });
+      c.posted_on = r.posted_on; c.views = r.views;
+      if (r.status){ c.status = r.status; toast(`Postado nas 3 redes!${r.freed_mb ? ` ${r.freed_mb} MB liberados.` : ""}`); loadStorage(); }
+      renderClips(true); return;
+    }
+    if (a === "cam") return openCam({ kind: "clip", id, t0: c.eff_ts || 0, name: c.channel_name, cam: c.cam, overlay: c.overlay, layout: c.layout || "auto", layoutUsed: c.layout_used });
     if (a === "postado" && ST.settings.posted_cleanup && confirmPost !== id){
       confirmPost = id; renderClips(true);
       toast("Clique de novo pra confirmar. O vídeo vai ser apagado pra liberar espaço (baixe antes se ainda não baixou).", 6000);
@@ -889,6 +998,13 @@ $("#clips").addEventListener("input", e => {
   clearTimeout(saveT); saveT = setTimeout(() => saveNow(c).catch(() => {}), 700);
 });
 $("#clips").addEventListener("change", async e => {
+  if (e.target.dataset.views){
+    const id = +e.target.dataset.id, c = clips.find(x => x.id === id), n = parseInt(String(e.target.value).replace(/\D/g, ""), 10);
+    if (!c || isNaN(n)) return;
+    try { const r = await post(`/api/clips/${id}/posted`, { platform: e.target.dataset.views, views: n }); c.views = r.views; toast("Views salvas 👍"); loadInsights(); }
+    catch (err) { toast(err.message); }
+    return;
+  }
   const tid = +e.target.dataset.theme;
   if (tid){
     try {
@@ -933,7 +1049,7 @@ function drawCam(){
     lay === "auto" ? (camSrc.layoutUsed || null) : lay);
 }
 async function openCam(src){
-  camSrc = src; camRect = src.cam ? { ...src.cam } : null; clipT = ST.settings.before || 10;
+  camSrc = src; camRect = src.cam ? { ...src.cam } : null; clipT = (src.t0 || 0) + (ST.settings.before || 10);
   $("#camRememberWrap").hidden = src.kind !== "clip";
   $("#layoutWrap").hidden = src.kind !== "clip";
   $("#camTitle").textContent = src.kind === "clip"
@@ -950,7 +1066,7 @@ function ptr(e){ const r = camPick.getBoundingClientRect(); return { x: Math.min
 camPick.addEventListener("pointerdown", e => { drag = ptr(e); camPick.setPointerCapture(e.pointerId); camRect = { x: drag.x, y: drag.y, w: 0, h: 0 }; drawCam(); });
 camPick.addEventListener("pointermove", e => { if (!drag) return; const p = ptr(e); camRect = { x: Math.min(drag.x, p.x), y: Math.min(drag.y, p.y), w: Math.abs(p.x - drag.x), h: Math.abs(p.y - drag.y) }; drawCam(); });
 camPick.addEventListener("pointerup", () => { drag = null; });
-$("#camRefresh").onclick = async () => { clipT = (clipT + 4) % 40; try { await loadCamImage(); } catch (e) { toast(e.message); } };
+$("#camRefresh").onclick = async () => { clipT = (camSrc && camSrc.t0 || 0) + ((clipT - (camSrc && camSrc.t0 || 0) + 4) % 40); try { await loadCamImage(); } catch (e) { toast(e.message); } };
 $("#camCancel").onclick = closeCam;
 async function finishCam(cam){
   const s = camSrc;
@@ -980,8 +1096,69 @@ document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#camMo
 window.addEventListener("error", e => toast(`⚠ Erro no painel: ${e.message}. Tire um print e mande pro Claude.`, 12000));
 window.addEventListener("unhandledrejection", e => toast(`⚠ Erro no painel: ${e.reason?.message || e.reason}. Tire um print e mande pro Claude.`, 12000));
 
+/* ------------------------------------------------------------ o que dá mais view */
+async function loadInsights(){
+  try {
+    const d = await api("/api/insights"), box = $("#insBox");
+    if (d.n < 3){
+      box.innerHTML = `<div class="muted">Quando você postar, marque no cartão do corte onde postou (📲 TikTok, Reels, Shorts) e depois de uns dias anote as visualizações. Com 3 ou mais cortes anotados aparece aqui o que dá mais view: tipo de momento, streamer, estilo e rede. ${d.n ? `(${d.n} até agora)` : ""}</div>`;
+      return;
+    }
+    const tab = (t, rows) => { if (!rows.length) return ""; const mx = Math.max(...rows.map(r => r[1])) || 1;
+      return `<div><b>${t}</b>${rows.map(r => `<span>${esc(r[0])}: <b style="display:inline;color:var(--text)">${r[1].toLocaleString("pt-BR")}</b> views em média <span class="muted">(${r[2]} corte${r[2] > 1 ? "s" : ""})</span></span><div class="bar" style="width:${Math.max(4, r[1] / mx * 100)}%"></div>`).join("")}</div>`; };
+    box.innerHTML = `<div class="muted">Média de visualizações dos ${d.n} cortes com views anotadas.</div><div class="instab">${tab("Por tipo de momento", d.by_cat)}${tab("Por streamer", d.by_channel)}${tab("Por estilo", d.by_style)}${tab("Por rede", d.by_platform)}${tab("GTA x React", d.by_theme)}</div>`;
+  } catch {}
+}
+
+/* ------------------------------------------------------------ compilado */
+let CMP = { cands: [], items: [], sel: new Set(), loaded: false };
+async function loadCompile(reselect){
+  const q = new URLSearchParams({ channel: $("#cmpChan").value, days: $("#cmpDays").value });
+  const d = await api("/api/compile?" + q);
+  CMP.cands = d.candidates; CMP.items = d.items;
+  if (reselect || !CMP.loaded){
+    const best = [...d.candidates].sort((a, b) => (b.views - a.views) || (b.score - a.score)).slice(0, 10);
+    CMP.sel = new Set(best.map(c => c.id)); CMP.loaded = true;
+  }
+  const chans = [...new Set([...ST.channels.map(c => c.name), ...d.candidates.map(c => c.channel_name)])], sel = $("#cmpChan"), cur = sel.value;
+  const opts = `<option value="">Todos os streamers</option>` + chans.map(n => `<option>${esc(n)}</option>`).join("");
+  if (sel.innerHTML !== opts){ sel.innerHTML = opts; sel.value = cur; }
+  $("#cmpList").innerHTML = d.candidates.length ? d.candidates.map(c => `<label class="cmpit"><input type="checkbox" data-cmp="${c.id}" ${CMP.sel.has(c.id) ? "checked" : ""}>
+      ${c.thumb ? `<img src="/media/${c.thumb}" alt="">` : ""}<span>${esc(c.title || "")}<br><span class="muted">${esc(c.channel_name)} · nota ${c.score}${c.views ? ` · 👁 ${c.views.toLocaleString("pt-BR")}` : ""}</span></span></label>`).join("")
+    : `<div class="muted">Nenhum corte aprovado com o vídeo ainda no PC nesse período. Aprove alguns cortes (✔ Aprovar) e clique em ↻ Mostrar cortes.</div>`;
+  renderCmpItems();
+}
+function renderCmpItems(){
+  $("#cmpItems").innerHTML = CMP.items.map(x => {
+    const done = x.status === "pronto";
+    return `<div class="cmpdone"><div class="row between"><b>${esc(x.title || "Compilado")}</b><span class="muted">${done ? "✅ pronto" : x.status === "erro" ? "⚠ deu erro" : `⏳ ${esc(x.status)} (${Math.round((x.progress || 0) * 100)}%)`}</span></div>
+      ${x.error ? `<div class="warn">${esc(x.error)}</div>` : ""}
+      ${done ? `<label class="muted" style="font-size:12px">Descrição (com os capítulos)<textarea rows="6" readonly>${esc(x.descr || "")}</textarea></label>
+      <div class="actions"><a class="btn small primary" href="/media/${x.file}" download>⬇ Baixar vídeo</a>
+        <button class="small" data-cmpcp="t" data-x="${x.id}">Copiar título</button><button class="small" data-cmpcp="d" data-x="${x.id}">Copiar descrição</button>
+        <button class="small danger" data-cmpdel="${x.id}">🗑</button></div>` : x.status === "erro" ? `<div class="actions"><button class="small danger" data-cmpdel="${x.id}">🗑</button></div>` : ""}
+    </div>`;
+  }).join("");
+}
+$("#cmpLoad").onclick = () => loadCompile(true).catch(e => toast(e.message));
+$("#cmpChan").onchange = () => loadCompile(true).catch(e => toast(e.message));
+$("#cmpDays").onchange = () => loadCompile(true).catch(e => toast(e.message));
+$("#cmpList").addEventListener("change", e => { const id = +e.target.dataset.cmp; if (!id) return; e.target.checked ? CMP.sel.add(id) : CMP.sel.delete(id); });
+$("#cmpGo").onclick = async () => {
+  const ids = CMP.cands.filter(c => CMP.sel.has(c.id)).map(c => c.id);
+  if (ids.length < 2) return toast("Marque pelo menos 2 cortes.");
+  try { await post("/api/compile", { clip_ids: ids, title: $("#cmpTitle").value }); $("#cmpTitle").value = "";
+    toast("Montando o compilado… acompanhe aqui embaixo (alguns minutos).", 5000); loadCompile(); } catch (e) { toast(e.message); }
+};
+$("#cmpItems").addEventListener("click", async e => {
+  const cp = e.target.closest("[data-cmpcp]"), del = e.target.closest("[data-cmpdel]");
+  if (cp){ const x = CMP.items.find(i => i.id === +cp.dataset.x); if (x) copy(cp.dataset.cmpcp === "t" ? x.title : x.descr, "Copiado"); }
+  if (del){ if (!confirm("Apagar esse compilado?")) return; await api(`/api/compile/${del.dataset.cmpdel}`, { method: "DELETE" }); loadCompile(); }
+});
+setInterval(() => { if (CMP.items.some(x => x.status !== "pronto" && x.status !== "erro")) loadCompile().catch(() => {}); }, 4000);
+
 /* ------------------------------------------------------------ início */
-loadState().then(() => { loadClips(true); loadStorage(); }).catch(e => toast("Não conectou no programa: " + e.message, 8000));
+loadState().then(() => { loadClips(true); loadStorage(); loadInsights(); loadCompile().catch(() => {}); }).catch(e => toast("Não conectou no programa: " + e.message, 8000));
 setInterval(() => loadState().catch(() => {}), 3000);
 setInterval(() => loadClips().catch(() => {}), 5000);
 </script>

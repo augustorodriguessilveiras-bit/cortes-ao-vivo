@@ -115,15 +115,43 @@ def record(clip_id, features_json, label):
     train()
 
 
+def total_views(views_json):
+    try:
+        return sum(int(v or 0) for v in json.loads(views_json or "{}").values())
+    except Exception:
+        return 0
+
+
+def _view_labels():
+    """
+    Cortes com visualizações anotadas: os que foram melhor que a metade dos seus outros postados contam como
+    'bons' e os piores como 'ruins'. Isso vale mais do que só ter aprovado (o público é quem decide).
+    """
+    rows = [r for r in db.query("SELECT id, features, views FROM clips WHERE views IS NOT NULL AND features IS NOT NULL")
+            if total_views(r["views"]) > 0]
+    if len(rows) < 6:
+        return {}
+    vals = sorted(total_views(r["views"]) for r in rows)
+    med = vals[len(vals) // 2]
+    return {r["id"]: (r["features"], 1 if total_views(r["views"]) >= med else 0) for r in rows}
+
+
+def _training_rows():
+    data = {r["clip_id"]: (r["features"], r["label"]) for r in db.query("SELECT clip_id, features, label FROM feedback")}
+    data.update(_view_labels())            # as views mandam mais que a aprovação
+    return [{"features": f, "label": l} for f, l in data.values()]
+
+
 def stats():
-    rows = db.query("SELECT label, COUNT(*) n FROM feedback GROUP BY label")
-    d = {r["label"]: r["n"] for r in rows}
-    return {"bons": d.get(1, 0), "ruins": d.get(0, 0), "ativo": MODEL_PATH.exists()}
+    rows = _training_rows()
+    pos = sum(r["label"] for r in rows)
+    n_views = len(_view_labels())
+    return {"bons": pos, "ruins": len(rows) - pos, "ativo": MODEL_PATH.exists(), "com_views": n_views}
 
 
 def train():
-    """Regressão logística simples com o que você aprovou e excluiu (precisa de 15 de cada)."""
-    rows = db.query("SELECT features, label FROM feedback")
+    """Regressão logística simples com o que você aprovou/excluiu e com as views (precisa de 15 bons e 15 ruins)."""
+    rows = _training_rows()
     pos = sum(r["label"] for r in rows)
     if pos < 15 or len(rows) - pos < 15:
         return
