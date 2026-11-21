@@ -200,7 +200,7 @@ details.meta[open] summary{margin-bottom:6px}
 
   <h2>📤 Enviar um corte seu</h2>
   <div class="settings" id="upBox" style="flex-direction:column;align-items:stretch;gap:10px">
-    <div class="muted">Cortou um trecho você mesmo? Envie aqui e o programa deixa no formato do TikTok/Reels/Shorts: câmera em cima (acha a webcam sozinho), título no vídeo, legenda, hashtags, tags e as regras do campeonato. Ele aparece junto com os outros cortes e dá pra editar igual.</div>
+    <div class="muted">Cortou um trecho você mesmo? Envie aqui e o programa deixa no formato do TikTok/Reels/Shorts: câmera em cima (acha a webcam sozinho), título no vídeo, descrição, hashtags, tags e as regras do campeonato. Ele aparece junto com os outros cortes e dá pra editar igual.</div>
     <div class="add">
       <input type="file" id="upFile" accept="video/*,.mp4,.mov,.mkv,.webm,.avi,.m4v,.ts,.flv" style="min-width:200px">
       <input type="text" id="upName" list="upNames" placeholder="De qual streamer? (ex: orenatovicente)" autocomplete="off" style="max-width:280px">
@@ -224,7 +224,7 @@ details.meta[open] summary{margin-bottom:6px}
     <label>Texto aparece por <input type="range" id="ov_secs" min="3" max="41" step="1"><output></output></label>
     <label>Volume do áudio <select id="audio_mode"><option value="auto">Automático (só mexe se estiver muito baixo ou estourando)</option><option value="off">Original da live (nunca mexer)</option></select></label>
     <label>Sobra guardada antes e depois do corte <input type="range" id="pad" min="0" max="60" step="5"><output></output></label>
-    <label>Estilo dos cortes novos <select id="style"><option value="padrao">Padrão (como sempre foi)</option><option value="dinamico">✨ Dinâmico (legenda palavra por palavra, zoom na reação, começo/fim esperto)</option></select></label>
+    <label>Estilo dos cortes novos <select id="style"><option value="padrao">Padrão (como sempre foi)</option><option value="dinamico">✨ Dinâmico (zoom na reação e começo/fim no ponto certo)</option></select></label>
     <label class="wide">Hashtags padrão <input type="text" id="tags"></label>
   </div>
   <p class="muted">Muito corte ruim? Aumente a nota mínima. Poucos cortes? Diminua.</p>
@@ -315,7 +315,7 @@ details.meta[open] summary{margin-bottom:6px}
         <div class="muted" id="edPadInfo" style="font-size:12px"></div>
 
         <h3>💬 Legenda e zoom</h3>
-        <label class="switch"><input type="checkbox" id="edSubs"> Legenda palavra por palavra (a palavra falada fica amarela)</label>
+        <label class="switch"><input type="checkbox" id="edSubs"> Legenda palavra por palavra (desligada normalmente; só se quiser nesse corte)</label>
         <label class="switch"><input type="checkbox" id="edZoom"> Zoom rápido na hora da reação</label>
         <div class="edrow">Lugar da legenda: <button class="small" data-suby="0.3">Mais em cima</button><button class="small" data-suby="def">Padrão</button><button class="small" data-suby="0.76">Mais embaixo</button><span class="muted" id="edSubYO"></span></div>
         <div class="muted" id="edSubsInfo" style="font-size:12px"></div>
@@ -552,7 +552,7 @@ function styleBox(c){
   const dyn = c.style === "dinamico";
   return `<div class="stylebox"><span class="lbl">🎞 Estilo do vídeo</span>
     <div><span class="seg"><button data-c="sty" data-v="padrao" data-id="${c.id}" class="${dyn ? "" : "on"}">Padrão</button><button data-c="sty" data-v="dinamico" data-id="${c.id}" class="${dyn ? "on" : ""}">✨ Dinâmico</button></span></div>
-    <span class="muted" style="font-size:12px">${dyn ? "Legenda palavra por palavra, zoom na reação e começo/fim no ponto certo." + (c.style_used != null && !/legenda/.test(c.style_used) && !c.rendering ? " (saiu sem legenda: precisa do reconhecimento de fala)" : "") : "Do jeito de sempre. Teste o ✨ Dinâmico pra comparar."}</span></div>`;
+    <span class="muted" style="font-size:12px">${dyn ? "Zoom na reação e começo/fim no ponto certo da fala." : "Do jeito de sempre. Teste o ✨ Dinâmico pra comparar."}</span></div>`;
 }
 function postBox(c){
   const P = c.posted_on || {}, V = c.views || {}, done = PLATS.filter(([p]) => P[p]), miss = PLATS.filter(([p]) => !P[p]);
@@ -762,7 +762,7 @@ function openEditor(c){
   const secs = c.ov_secs ?? ST.settings.ov_secs ?? 10;
   const dynDef = c.style === "dinamico";
   Object.assign(ED, { c, v, drag: null, ts: c.eff_ts ?? 0, te: c.eff_te ?? null, ts0: c.eff_ts ?? 0, te0: c.eff_te ?? null,
-    subs: c.subs_on != null ? !!c.subs_on : dynDef, zoom: c.zoom_on != null ? !!c.zoom_on : dynDef, dynDef, subY: c.sub_y ?? null,
+    subs: !!c.subs_on, zoom: c.zoom_on != null ? !!c.zoom_on : dynDef, dynDef, subY: c.sub_y ?? null,
     on: ovOn(c), text: c.overlay || "",
     ca: c.cap_start ?? 0, cb: c.cap_end ?? (secs > 40 ? 9999 : secs), capY: c.cap_y ?? null,
     wm: (c.rules && (c.rules.watermark || c.rules.lower_url))
@@ -874,7 +874,7 @@ async function saveEditor(reset){
     : { ...(Math.abs(ED.ts - ED.ts0) < 0.05 && Math.abs(ED.te - ED.te0) < 0.05
           ? { trim_start: null, trim_end: null }          // não mexeu: continua seguindo o estilo do corte
           : { trim_start: +ED.ts.toFixed(2), trim_end: +ED.te.toFixed(2) }),
-        subs_on: ED.subs === ED.dynDef ? null : ED.subs, zoom_on: ED.zoom === ED.dynDef ? null : ED.zoom, sub_y: ED.subY,
+        subs_on: ED.subs ? true : null, zoom_on: ED.zoom === ED.dynDef ? null : ED.zoom, sub_y: ED.subY,
         cap_start: +ED.ca.toFixed(2), cap_end: ED.cb >= 9000 ? 9999 : +ED.cb.toFixed(2),
         cap_y: ED.capY, wm_x: ED.wm ? +ED.wm.x.toFixed(3) : null, wm_y: ED.wm ? +ED.wm.y.toFixed(3) : null,
         overlay: ED.text, overlay_on: ED.on };

@@ -105,7 +105,7 @@ def render_vertical_for(clip_id):
         caption = (c["overlay"] or "") if on else ""
         trim = effective_trim(c)
         dyn = c.get("style") == "dinamico"
-        subs_on = bool(c["subs_on"]) if c.get("subs_on") is not None else dyn
+        subs_on = bool(c.get("subs_on"))     # legenda só se você ligar no editor (o dinâmico não legenda)
         zoom_on = bool(c["zoom_on"]) if c.get("zoom_on") is not None else dyn
         words = json.loads(c["words"]) if c.get("words") else None
         if (subs_on or zoom_on) and words is None and transcribe.available():

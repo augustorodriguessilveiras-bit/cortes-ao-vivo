@@ -16,7 +16,7 @@ DEFAULTS = {
     "posted_cleanup": True,            # ao marcar "postado", apaga os vídeos pra liberar espaço
     "audio_mode": "auto",              # auto: só mexe se estiver muito baixo ou estourando · off: nunca mexe
     "pad": 30,                         # sobra guardada antes e depois do corte (pra puxar mais no editor)
-    "style": "padrao",                 # estilo dos cortes novos: padrao · dinamico (legenda, zoom e começo/fim esperto)
+    "style": "padrao",                 # estilo dos cortes novos: padrao · dinamico (zoom e começo/fim esperto)
 }
 _lock = threading.Lock()
 

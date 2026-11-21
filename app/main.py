@@ -242,7 +242,7 @@ class StyleIn(BaseModel):
 
 @app.post("/api/clips/{clip_id}/style")
 def set_style(clip_id: int, body: StyleIn):
-    """Padrão (como sempre foi) ou Dinâmico (legenda palavra por palavra, zoom na reação, começo/fim esperto)."""
+    """Padrão (como sempre foi) ou Dinâmico (zoom na reação e começo/fim esperto, sem legenda)."""
     c = _clip(clip_id)
     if body.style not in ("padrao", "dinamico"):
         raise HTTPException(400, "Estilo inválido")
@@ -250,7 +250,7 @@ def set_style(clip_id: int, body: StyleIn):
                                  "zoom_on": None, "rendering": 1, "warn": None})
     CLIP_POOL.submit(render_vertical_for, clip_id)
     if body.style == "dinamico" and not c.get("words") and not transcribe.available():
-        return {"ok": True, "aviso": "Sem o reconhecimento de fala instalado, o estilo dinâmico sai sem a legenda."}
+        return {"ok": True, "aviso": "Sem o reconhecimento de fala instalado, o dinâmico só consegue dar o zoom no momento forte."}
     return {"ok": True}
 
 
