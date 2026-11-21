@@ -242,7 +242,7 @@ def new_title(clip_id: int):
     c = _clip(clip_id)
     import re as _re
     gain = max([float(x) for x in _re.findall(r"áudio \+(\d+) dB", c["reasons"] or "")] or [0])
-    raw, n_subject = meta.titles_for(c["channel_name"], c["cat"] or "geral", c["subject"], gain)
+    raw, n_subject = meta.titles_for(c["channel_name"], c["cat"] or "geral", c["subject"], gain, c.get("theme") or "gta")
     titles = [rules.title_with_tag(c["channel_name"], t) for t in raw]
     recent = [r["title"] for r in db.query("SELECT title FROM clips WHERE channel_name=? AND id<>? ORDER BY created_at DESC LIMIT 60",
                                            (c["channel_name"], clip_id))]
@@ -285,7 +285,8 @@ def new_hook(clip_id: int):
     c = _clip(clip_id)
     subject = c["subject"] or meta.find_subject([c["transcript"] or ""] * 2)
     disp = rules.display(c["channel_name"])
-    first, rest = meta.hooks_for(c["channel_name"], c["cat"] or "geral", subject, _gain(c))
+    theme = c.get("theme") or "gta"
+    first, rest = meta.hooks_for(c["channel_name"], c["cat"] or "geral", subject if theme == "gta" else None, _gain(c), "", theme)
     quotes = rules.adapt(c["channel_name"], meta.transcript_quotes(c["transcript"], disp), "hook")
     recent = {r["overlay"] for r in db.query("SELECT overlay FROM clips WHERE channel_name=? AND id<>? ORDER BY created_at DESC LIMIT 60",
                                              (c["channel_name"], clip_id))}
@@ -306,11 +307,34 @@ def new_hook(clip_id: int):
     return {"overlay": hook}
 
 
+class ThemeIn(BaseModel):
+    theme: str
+
+
+@app.post("/api/clips/{clip_id}/theme")
+def set_theme(clip_id: int, body: ThemeIn):
+    """Troca o tema do corte (GTA ou react/outros) e refaz título, descrição, hashtags, tags e texto."""
+    if body.theme not in ("gta", "react"):
+        raise HTTPException(400, "Tema inválido")
+    c = _clip(clip_id)
+    speech = [(0.0, 0.0, c["transcript"])] if c.get("transcript") else []
+    prev = db.query("SELECT title, overlay FROM clips WHERE channel_name=? AND id<>? ORDER BY created_at DESC LIMIT 60",
+                    (c["channel_name"], clip_id))
+    m = meta.make_meta(c["channel_name"], c.get("platform") or "", c.get("url") or "", [], gain=_gain(c),
+                       avoid=[r["title"] for r in prev], speech=speech, avoid_hooks=[r["overlay"] for r in prev],
+                       theme=body.theme)
+    data = {k: m[k] for k in ("title", "title_idx", "descr", "tags", "yt_tags", "theme", "subject")}
+    if (c.get("overlay_on") is None or c.get("overlay_on")) and m.get("overlay"):
+        data["overlay"] = m["overlay"]
+    db.update("clips", clip_id, data)
+    return data
+
+
 @app.post("/api/clips/{clip_id}/yttags")
 def regen_tags(clip_id: int):
     c = _clip(clip_id)
     subject = c["subject"] or meta.find_subject([c["transcript"] or ""] * 2)
-    tags = meta.youtube_tags(c["channel_name"], c.get("platform") or "", c.get("cat") or "geral", subject)
+    tags = meta.youtube_tags(c["channel_name"], c.get("platform") or "", c.get("cat") or "geral", subject, c.get("theme") or "gta")
     db.update("clips", clip_id, {"yt_tags": tags})
     return {"yt_tags": tags}
 

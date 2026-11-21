@@ -82,6 +82,7 @@ details.meta summary{cursor:pointer;font-size:13px;color:var(--accent2);list-sty
 details.meta summary::-webkit-details-marker{display:none}
 details.meta[open] summary{margin-bottom:6px}
 .meta label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted);margin-bottom:6px}
+.meta select{width:100%;padding:7px 9px;font-size:13px;border-radius:8px}
 .meta input,.meta textarea{width:100%;padding:7px 9px;font-size:13px;border-radius:8px;resize:vertical;background:var(--bg)}
 .meta textarea{min-height:60px}
 .empty{color:var(--muted);padding:28px;text-align:center;border:1px dashed var(--line);border-radius:14px;grid-column:1/-1}
@@ -470,6 +471,7 @@ function renderClips(force){
       ${c.title ? `<div class="ctitle">${esc(c.title)}</div>` : ""}
       ${c.rules ? ruleBox(c) : ""}
       <div class="reasons">${esc(c.reasons)}</div>
+      <div class="fmt">${c.theme === "react" ? "📺 Tema: react / outros" : "🎮 Tema: GTA 6"}</div>
       ${c.layout_used ? `<div class="fmt">📐 Formato: ${{ cam: "câmera em cima + gameplay", full: "tela cheia (full cam)", game: "só gameplay" }[c.layout_used] || c.layout_used}${(c.layout || "auto") === "auto" ? " (automático)" : ""}</div>` : ""}
       ${c.audio_info ? `<div class="fmt">🔊 ${esc(c.audio_info)}</div>` : ""}
       ${c.warn ? `<div class="warn">⚠ ${esc(c.warn)}</div>` : ""}
@@ -497,6 +499,7 @@ function renderClips(force){
       </div>
       <details class="meta" data-id="${id}" ${openMeta.has(id) ? "open" : ""}>
         <summary>📝 Título, descrição e hashtags</summary>
+        <label>🎮 Tema do corte<select data-theme="${id}"><option value="gta" ${(c.theme || "gta") === "gta" ? "selected" : ""}>GTA 6 (jogando)</option><option value="react" ${c.theme === "react" ? "selected" : ""}>React / outros (assistindo vídeo, TikTok, papo)</option></select></label>
         <label>Título<input type="text" data-f="title" data-id="${id}" value="${esc(c.title)}"></label>
         <label>Descrição<textarea data-f="descr" data-id="${id}">${esc(c.descr)}</textarea></label>
         <label>Hashtags<textarea data-f="tags" data-id="${id}">${esc(c.tags)}</textarea></label>
@@ -835,7 +838,16 @@ $("#clips").addEventListener("input", e => {
   if (f === "overlay") drawPreview(id);
   clearTimeout(saveT); saveT = setTimeout(() => saveNow(c).catch(() => {}), 700);
 });
-$("#clips").addEventListener("change", e => {
+$("#clips").addEventListener("change", async e => {
+  const tid = +e.target.dataset.theme;
+  if (tid){
+    try {
+      await post(`/api/clips/${tid}/theme`, { theme: e.target.value }); openMeta.add(tid); frames.delete(tid);
+      toast("Título, descrição, hashtags e tags refeitos pro tema novo. O texto do vídeo também mudou: clique em \"Aplicar no vídeo\" pra colocar ele no vídeo.", 8000);
+      loadClips(true);
+    } catch (err) { toast(err.message); }
+    return;
+  }
   const id = +e.target.dataset.ovon; if (!id) return;
   const c = clips.find(x => x.id === id); if (!c) return;
   c.overlay_on = e.target.checked ? 1 : 0; dirty.set(id, { ...(dirty.get(id) || {}), overlay_on: e.target.checked });

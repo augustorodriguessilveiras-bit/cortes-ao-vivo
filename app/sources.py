@@ -78,6 +78,25 @@ def resolve(url, quality="best"):
     return _ydl(fmt).extract_info(url, download=False)
 
 
+GTA_WORDS = ("gta", "grand theft", "leonida", "vice city", " rp ")
+REACT_WORDS = ("react", "reagindo", "reacao", "reação", "assistindo", "vendo video", "vendo vídeo", "tiktok",
+               "just chatting", "conversando", "bate papo", "bate-papo", "irl", "papo")
+
+
+def guess_theme(info):
+    """'gta' ou 'react' pelo título e categoria. Na dúvida, GTA (o foco)."""
+    if not info:
+        return "gta"
+    parts = [info.get("title") or "", info.get("description") or "", info.get("category") or "",
+             " ".join(info.get("categories") or []), " ".join(info.get("tags") or [])]
+    text = " " + " ".join(parts).lower() + " "
+    if any(w in text for w in GTA_WORDS):
+        return "gta"
+    if any(w in text for w in REACT_WORDS):
+        return "react"
+    return "gta"
+
+
 def is_live(url):
     try:
         info = resolve(url, "best")

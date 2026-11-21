@@ -33,6 +33,13 @@ CATS = {
                       titles=["{N} NÃO AGUENTOU 😂 GTA 6", "O CHAT CHOROU DE RIR COM {N} 😂", "NINGUÉM ESPERAVA ISSO DO {N} 💀",
                               "O {N} PASSOU VERGONHA NO GTA 6 🤣", "ISSO SÓ ACONTECE COM O {N} 😂", "O {N} CHOROU DE RIR AQUI 🤣",
                               "MOMENTO MAIS ENGRAÇADO DA LIVE DO {N} 😂", "O GTA 6 ZOOU O {N} KKKKKKK", "O {N} NÃO SABIA SE RIA OU CHORAVA 😂"]),
+    "descoberta": dict(re=r"(\bbug|bugou|bugad|glitch|atravess|caiu do mapa|voou|nunca vi|nunca tinha visto|primeira vez|"
+                          r"descobri|easter egg|que detalhe|realista|impressionante|que lindo|olha isso|voc[eê]s viram)",
+                       lead="Descoberta", tags=["#descoberta", "#bug", "#detalhes"],
+                       titles=["O {N} ACHOU UM BUG ABSURDO NO GTA 6 🤯", "NINGUÉM TINHA VISTO ESSE DETALHE DO GTA 6 👀",
+                               "O {N} DESCOBRIU ISSO NO GTA 6 E FICOU CHOCADO 😳", "O GTA 6 BUGOU NA LIVE DO {N} 🤯",
+                               "PRIMEIRA VEZ QUE O {N} VIU ISSO NO GTA 6 😳", "O {N} NÃO ACREDITOU NESSE DETALHE DO GTA 6 👀",
+                               "ESSE BUG DO GTA 6 DEIXOU O {N} SEM PALAVRAS 🤯", "O NÍVEL DE DETALHE DO GTA 6 IMPRESSIONOU O {N} 👀"]),
     "geral": dict(re=None, lead="Melhor momento", tags=["#reacao", "#momentos"],
                   titles=["{N} PERDEU A CABEÇA NO GTA 6 🤯", "O MOMENTO MAIS INSANO DA LIVE DO {N}", "OLHA O QUE O {N} FEZ NO GTA 6 👀",
                           "O {N} NÃO ESPERAVA POR ISSO NO GTA VI 😳", "NINGUÉM ESTAVA PREPARADO PRA ISSO ({N}) 😳",
@@ -70,6 +77,7 @@ THINGS = {
     "corrida": ("A CORRIDA", "APOSTAR CORRIDA"), "rampa": ("A RAMPA", "PULAR DA RAMPA"), "ponte": ("A PONTE", "PULAR DA PONTE"),
 }
 ENDINGS = {
+    "descoberta": ["E DESCOBRIU UMA COISA ABSURDA 🤯", "E ACHOU UM BUG QUE NINGUÉM TINHA VISTO 👀"],
     "engracado": ["E NÃO ESPERAVA POR ISSO KKKKKKKKKK", "E DEU TUDO ERRADO KKKKKKKK"],
     "fail": ["E DEU MUITO RUIM 💀", "E SE ARREPENDEU NA HORA 💀"],
     "epico": ["E FEZ HISTÓRIA 🔥", "E MOSTROU COMO SE FAZ 🔥"],
@@ -77,7 +85,7 @@ ENDINGS = {
     "policia": ["E VIROU O MAIS PROCURADO 🚨", "E A POLÍCIA NÃO PERDOOU 🚨"],
     "geral": ["E OLHA NO QUE DEU 😱", "E NÃO ESPERAVA POR ISSO 😳"],
 }
-EMO = {"engracado": "KKKKKKKKKK", "fail": "💀", "epico": "🔥", "susto": "😱", "policia": "🚨", "geral": "😳"}
+EMO = {"descoberta": "🤯", "engracado": "KKKKKKKKKK", "fail": "💀", "epico": "🔥", "susto": "😱", "policia": "🚨", "geral": "😳"}
 PLAT = {"twitch": "Twitch", "kick": "Kick", "youtube": "YouTube"}
 
 
@@ -109,8 +117,12 @@ def title_list(cat, name, subject, gain=0):
         de = re.sub(r"^O ", "DO ", re.sub(r"^A ", "DA ", art))
         emo = EMO.get(cat, "😳")
         out += [f"{N} FOI {act} NO GTA VI {e}" for e in ends]
-        out += [f"{N} TENTOU {act} E OLHA NO QUE DEU {emo}", f"QUANDO O {N} RESOLVEU {act}... {emo}",
-                f"NUNCA DEIXE O {N} {act} NO GTA 6 💀", f"O {N} SÓ QUERIA {act} 😭", f"{art} NO GTA 6 E O {N} 😂"]
+        if cat == "descoberta":   # bug/descoberta: o título fala da descoberta, não de "deu ruim"
+            out += [f"O {N} FOI {act} E ACHOU UM BUG NO GTA 6 🤯", f"OLHA O QUE ACONTECEU QUANDO O {N} FOI {act} 👀"]
+            out += [t.replace("{N}", N) for t in C["titles"]]
+        else:
+            out += [f"{N} TENTOU {act} E OLHA NO QUE DEU {emo}", f"QUANDO O {N} RESOLVEU {act}... {emo}",
+                    f"NUNCA DEIXE O {N} {act} NO GTA 6 💀", f"O {N} SÓ QUERIA {act} 😭", f"{art} NO GTA 6 E O {N} 😂"]
         extra = {
             "engracado": [f"{art} ACABOU COM O {N} KKKKKKKK", f"{N} E {art}: NINGUÉM ESPERAVA ISSO 😂"],
             "fail": [f"{N} MORREU POR CAUSA {de} 💀", f"{art} DESTRUIU O {N} 💀"],
@@ -157,6 +169,8 @@ def top_message(lines):
 # ------------------------------------------------------------ texto da faixa dentro do vídeo
 # Estilo "gancho" de corte de TikTok. Diferente do título, pra não ficar tudo igual.
 HOOKS = {
+    "descoberta": ["O {N} ACHOU UM BUG QUE NINGUÉM TINHA VISTO NO GTA VI 🤯", "PRESTA ATENÇÃO NESSE DETALHE DO GTA VI 👀",
+                   "O {N} DESCOBRIU ISSO NO GTA VI E FICOU CHOCADO 😳", "PRIMEIRA VEZ QUE O {N} VIU ISSO NO GTA VI 😳"],
     "engracado": ["O {N} NÃO ESPERAVA POR ESSA NO GTA VI KKKKKKKKKK", "O CHAT NÃO AGUENTOU ESSA DO {N} KKKKKKK",
                   "SÓ O {N} PRA PASSAR ESSA VERGONHA NO GTA 6 KKKKK", "O {N} TENTOU SER SÉRIO MAS NÃO DEU KKKKKKK",
                   "ATÉ O {N} RIU DELE MESMO NESSA KKKKKKKK", "O GTA 6 ZOOU O {N} DE UM JEITO QUE NINGUÉM ESPERAVA KKKKK"],
@@ -247,12 +261,47 @@ YT_CAT = {"engracado": ["gta 6 engraçado", "momentos engraçados gta 6", "gta 6
           "geral": ["melhores momentos gta 6", "gta 6 momentos"]}
 
 
-def youtube_tags(channel, platform, cat, subject=None):
+# ------------------------------------------------------------ tema do corte: GTA ou react/outros
+REACT_TITLES = ["A REAÇÃO DO {N} A ESSE VÍDEO 😂", "O {N} NÃO AGUENTOU ESSE VÍDEO KKKK", "O {N} VIU ISSO E NÃO ACREDITOU 😳",
+                "O REACT MAIS ENGRAÇADO DO {N} 😂", "O {N} ASSISTINDO ISSO 😳", "O {N} REAGINDO A ISSO FOI TUDO 😂",
+                "ESSE VÍDEO DEIXOU O {N} SEM PALAVRAS 😶", "A CARA DO {N} VENDO ISSO 😂", "O {N} NÃO ESPERAVA ESSE FINAL 😳",
+                "O {N} VIU ESSE TIKTOK E… 😂"]
+REACT_HOOKS = ["OLHA A REAÇÃO DO {N} NO FINAL 😂", "O {N} NÃO ESPERAVA ESSE FINAL 😳", "ESPERA A REAÇÃO DO {N} 😂",
+               "O {N} VIU ESSE VÍDEO E NÃO AGUENTOU KKKKK", "ESSE VÍDEO QUEBROU O {N} KKKKK", "A REAÇÃO DO {N} A ISSO 😂"]
+
+
+def degta(texts):
+    """Tira as menções ao GTA dos textos (pra cortes de react/outros). Os que dependem do GTA saem da lista."""
+    out = []
+    for t in texts:
+        t2 = re.sub(r"\s*\b(NO|NA|DO|DA|COM O)\s+GTA\s*(6|VI)\b", "", t)
+        if re.search(r"GTA|LEONIDA", t2):
+            continue
+        t2 = re.sub(r"\s{2,}", " ", t2).strip()
+        if t2 and t2 not in out:
+            out.append(t2)
+    return out
+
+
+def youtube_tags(channel, platform, cat, subject=None, theme="gta"):
     """Tags pro campo "Tags" do YouTube (separadas por vírgula, até 500 caracteres)."""
     n = channel.lower()
     plat = PLAT.get(platform, "").lower()
     r = rules.for_channel(channel)
     tags = list(r.get("yt_tags", [])) if r else []
+    if theme == "react":
+        tags = [t for t in tags if "gta" not in t]
+        tags += ["react", f"{n} react", f"react {n}", f"{n} reagindo", "reação", "reagindo a vídeos", n,
+                 f"cortes {n}", f"cortes do {n}", f"{n} cortes", "melhores momentos", "momentos engraçados"]
+        if plat:
+            tags += [f"{n} {plat}", f"live {plat}"]
+        tags += ["cortes de live", "react engraçado", "shorts"]
+        out, size = [], 0
+        for t in tags:
+            if t not in out and size + len(t) + 2 <= 480:
+                out.append(t)
+                size += len(t) + 2
+        return ", ".join(out)
     tags += ["gta 6", "gta vi", "gta 6 gameplay", "gta 6 brasil", "gta 6 ao vivo", "grand theft auto 6",
             n, f"{n} gta 6", f"{n} gta vi", f"cortes {n}", f"cortes do {n}", f"{n} cortes"]
     tags += YT_CAT.get(cat, YT_CAT["geral"])
@@ -270,12 +319,21 @@ def youtube_tags(channel, platform, cat, subject=None):
     return ", ".join(out)
 
 
-def titles_for(channel, cat, subject, gain=0):
+def titles_for(channel, cat, subject, gain=0, theme="gta"):
     """Títulos possíveis já ajustados pras regras do canal. Retorna (lista, quantos do começo são ligados à cena)."""
     disp = rules.display(channel)
+    if theme == "react":
+        N = disp.upper()
+        react = [t.replace("{N}", N) for t in REACT_TITLES]
+        full = rules.adapt(channel, react + [t for t in degta(title_list(cat, disp, None, gain)) if t not in react], "title")
+        return full, len(rules.adapt(channel, react, "title"))
     full = rules.adapt(channel, title_list(cat, disp, subject, gain), "title")
     if not subject:
-        return full, 0
+        if cat == "geral":
+            return full, 0
+        # sem assunto, mas o tipo do momento é conhecido (descoberta, engraçado…): prefere os títulos desse tipo
+        mine = set(rules.adapt(channel, [t.replace("{N}", disp.upper()) for t in CATS[cat]["titles"]], "title"))
+        return full, sum(1 for t in full if t in mine)
     base = set(rules.adapt(channel, title_list(cat, disp, None, gain), "title"))
     n = 0
     for t in full:
@@ -285,29 +343,35 @@ def titles_for(channel, cat, subject, gain=0):
     return full, n
 
 
-def hooks_for(channel, cat, subject, gain=0, quote=""):
+def hooks_for(channel, cat, subject, gain=0, quote="", theme="gta"):
     """Textos da faixa ajustados pras regras do canal. Retorna (ligados ao corte, outros)."""
     disp = rules.display(channel)
+    if theme == "react":
+        N = disp.upper()
+        first, rest = hook_options(cat, disp, None, gain, quote)
+        first = [h for h in first if '"' in h] + [h.replace("{N}", N) for h in REACT_HOOKS]
+        return rules.adapt(channel, degta(first), "hook"), rules.adapt(channel, degta(rest), "hook")
     first, rest = hook_options(cat, disp, subject, gain, quote)
     return rules.adapt(channel, first, "hook"), rules.adapt(channel, rest, "hook")
 
 
-def make_meta(channel, platform, url, lines=(), manual=False, gain=0, avoid=(), speech=(), peak_rel=None, avoid_hooks=()):
+def make_meta(channel, platform, url, lines=(), manual=False, gain=0, avoid=(), speech=(), peak_rel=None, avoid_hooks=(),
+              theme="gta"):
     """lines: mensagens do chat · speech: o que o streamer falou no corte [(inicio, fim, texto)]"""
     lines = list(lines)
     speech = list(speech or [])
     spoken = [t for _, _, t in speech]
-    cat, best = "geral", 1
-    for k, rx in _RE.items():
-        n = sum(1 for l in lines if rx.search(l))
-        if n > best:
-            cat, best = k, n
     # o que o streamer fala perto do momento forte pesa mais que o resto
     near = [t for st, en, t in speech if peak_rel is not None and st - 4 <= peak_rel <= en + 4]
-    subject = find_subject(lines + spoken + near * 3)
+    cat, best = "geral", 1
+    for k, rx in _RE.items():
+        n = sum(1 for l in lines if rx.search(l)) + 2 * sum(1 for l in (near or spoken) if rx.search(l))
+        if n > best:
+            cat, best = k, n
+    subject = find_subject(lines + spoken + near * 3) if theme != "react" else None
     rule = rules.for_channel(channel)
     disp = rules.display(channel)            # ex: "orenatovicente" aparece como "Renato" nos textos
-    titles, n_subject = titles_for(channel, cat, subject, gain)
+    titles, n_subject = titles_for(channel, cat, subject, gain, theme)
     raw_title = pick_title(titles, max(0, n_subject), avoid)
     title = rules.title_with_tag(channel, raw_title)
     chat_top = top_message(lines)
@@ -318,7 +382,7 @@ def make_meta(channel, platform, url, lines=(), manual=False, gain=0, avoid=(), 
     lead = CATS[cat]["lead"]
     if rules.is_safe(channel) and cat in ("fail", "susto"):
         lead = "Melhor momento"
-    desc = f"{lead} {do} {Nn} ao vivo no GTA 6 🎮"
+    desc = f"{lead} {do} {Nn} ao vivo no GTA 6 🎮" if theme != "react" else f"{lead} {do} {Nn} reagindo ao vivo 🎥"
     if chat_top and not rules.is_safe(channel):   # canais "safe": nada de comentário do chat na legenda
         desc += f'\n💬 O chat: "{chat_top}"'
     desc += f"\n🔴 Acompanhe {o} {Nn} na {plat}: {url}"
@@ -330,6 +394,8 @@ def make_meta(channel, platform, url, lines=(), manual=False, gain=0, avoid=(), 
         + [name_tag, name_tag + "cortes", "#" + plat.lower()] + CATS[cat]["tags"]
     # campeonatos pedem hashtags ligadas ao conteúdo: sem #fyp/#viral e, nos canais "safe", sem #fail etc.
     drop = {"#fyp", "#viral"} if rule else set()
+    if theme == "react":   # react/outros: nada de hashtag de GTA
+        base = [t for t in base if "gta" not in t.lower()] + ["#react", "#reacao"]
     if rules.is_safe(channel):
         drop |= {"#fail", "#gtafail", "#wasted", "#susto", "#wtf"}
     for t in base:
@@ -337,11 +403,11 @@ def make_meta(channel, platform, url, lines=(), manual=False, gain=0, avoid=(), 
         if t not in tags and t.lower() not in drop:
             tags.append(t)
     quote = quote_near(speech, peak_rel)
-    first, rest = hooks_for(channel, cat, subject, gain, quote)
+    first, rest = hooks_for(channel, cat, subject, gain, quote, theme)
     hook = pick_hook(first, rest, set(avoid_hooks) | {title, raw_title})
     return {
         "cat": cat, "subject": subject, "title": title, "title_idx": titles.index(raw_title), "descr": desc,
-        "tags": " ".join(tags), "chat_top": chat_top, "yt_tags": youtube_tags(channel, platform, cat, subject),
+        "tags": " ".join(tags), "chat_top": chat_top, "yt_tags": youtube_tags(channel, platform, cat, subject, theme), "theme": theme,
         "overlay": hook if settings.get("ov_on") else "",
         "transcript": " ".join(spoken)[:2000] or None,
     }

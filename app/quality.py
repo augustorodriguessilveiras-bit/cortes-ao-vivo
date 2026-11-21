@@ -19,14 +19,19 @@ REACTION = ["meu deus", "caraca", "caramba", "que isso", "nao acredito", "olha i
             "corre", "cuidado", "morri", "mano do ceu", "nao nao", "para para", "ai meu", "jesus", "que loucura",
             "inacreditavel", "nao pode ser", "como assim", "o que", "puta merda", "misericordia"]
 DISCOVERY = ["descobri", "voces viram", "viu isso", "sabia que", "da pra", "consegui", "achei", "olha o que",
-             "repara", "segredo", "easter egg", "bug", "que legal", "que da hora", "incrivel", "perfeito", "nunca vi",
-             "primeira vez", "olha ali", "olha la", "tem um", "tem uma", "funciona", "detalhe", "realista"]
+             "repara", "segredo", "easter egg", "que legal", "que da hora", "incrivel", "perfeito", "nunca vi",
+             "primeira vez", "olha ali", "olha la", "funciona", "detalhe", "realista", "nunca tinha visto",
+             "impressionante", "que lindo", "que bonito", "olha que", "grafico", "que perfeicao", "que detalhe",
+             "nao sabia", "tem como", "olha esse", "olha essa"]
+BUG = ["bug", "bugou", "bugado", "glitch", "atravessou", "atravessei", "caiu do mapa", "voou", "voando", "travou",
+       "preso", "ficou preso", "entrou na parede", "dentro da parede", "fisica", "que bizarro", "bizarro", "sumiu",
+       "teleport", "flutuando", "de ponta cabeca", "desapareceu"]
 FUNNY = ["kkk", "haha", "hehe", "rsrs", "risos", "zoeira", "que vergonha", "ridiculo", "palhaco", "kkkk",
          "to rindo", "morrendo de rir", "chorando de rir", "piada"]
 
 WIN_BEFORE, WIN_AFTER = 10.0, 12.0     # janela ao redor do momento forte (segundos)
 MODEL_PATH = C.DATA_DIR / "aprendizado.json"
-FEATS = ["sinal", "fala", "reacao", "descoberta", "engracado", "sem_fala"]
+FEATS = ["sinal", "fala", "reacao", "descoberta", "engracado", "sem_fala", "bug"]
 
 with db._lock:
     db._conn.execute("CREATE TABLE IF NOT EXISTS feedback (id INTEGER PRIMARY KEY AUTOINCREMENT, "
@@ -63,17 +68,20 @@ def evaluate(signal, speech, peak_rel, dur=None):
     text = _norm(" ".join(t for _, _, t in near))
     whole = _norm(" ".join(t for _, _, t in speech))
     react, disc, fun = _hits(text, REACTION), _hits(text, DISCOVERY), _hits(whole, FUNNY)
+    bug = _hits(text, BUG)
     excl = sum(t.count("!") + t.count("?") for _, _, t in near)
     reasons = []
     if not near:
         content = 0.5
         reasons.append("🔇 ninguém falou perto do momento (pode ser só barulho do jogo)")
     else:
-        content = 2.0 + min(2.0, ratio * 3) + min(5.0, len(react) * 1.8) + min(3.5, len(disc) * 1.6) \
-            + min(4.0, len(fun) * 1.6) + min(0.8, excl * 0.2)
+        content = 2.0 + min(2.0, ratio * 3) + min(5.0, len(react) * 1.8) + min(4.0, len(disc) * 1.8) \
+            + min(4.5, len(bug) * 2.2) + min(4.0, len(fun) * 1.6) + min(0.8, excl * 0.2)
         content = min(10.0, content)
-        quote = max(near, key=lambda x: len(_hits(_norm(x[2]), REACTION + DISCOVERY + FUNNY)) * 10 + min(len(x[2]), 60))[2]
-        if disc and len(disc) >= len(react):
+        quote = max(near, key=lambda x: len(_hits(_norm(x[2]), REACTION + DISCOVERY + FUNNY + BUG)) * 10 + min(len(x[2]), 60))[2]
+        if bug:
+            reasons.append(f"🐞 bug no jogo: “{quote.strip()[:60]}”")
+        elif disc and len(disc) >= len(react):
             reasons.append(f"🔎 descoberta: “{quote.strip()[:60]}”")
         elif react:
             reasons.append(f"🗣 reação: “{quote.strip()[:60]}”")
@@ -86,7 +94,7 @@ def evaluate(signal, speech, peak_rel, dur=None):
         else:
             reasons.append(f"🎙 falando: “{quote.strip()[:60]}”")
     feats = {"sinal": signal / 10, "fala": ratio, "reacao": min(3, len(react)) / 3, "descoberta": min(3, len(disc)) / 3,
-             "engracado": min(3, len(fun)) / 3, "sem_fala": 0.0 if near else 1.0}
+             "engracado": min(3, len(fun)) / 3, "sem_fala": 0.0 if near else 1.0, "bug": min(2, len(bug)) / 2}
     final = 0.3 * signal + 0.7 * content      # o que ele fala pesa mais que o barulho
     learned = predict(feats)
     if learned is not None:

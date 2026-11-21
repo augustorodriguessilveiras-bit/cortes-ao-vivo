@@ -101,6 +101,7 @@ class ChannelWorker(threading.Thread):
         self.score = 0.0
         self.history = deque(maxlen=300)
         self.quality = ""
+        self.theme, self._theme_at = "gta", 0.0
         self._stop = threading.Event()
         self._lock = threading.Lock()
         self._procs = []
@@ -233,6 +234,7 @@ class ChannelWorker(threading.Thread):
             self.chat = TwitchChat(self.name)
             self.chat.start()
 
+        self._update_theme(src if isinstance(src, dict) else None)
         self.status = "gravando"
         self.live_since = time.time()
         self.error = ""
@@ -253,7 +255,21 @@ class ChannelWorker(threading.Thread):
             self.score = 0.0
             log.info("⚫ %s: parou de gravar (live acabou)", self.name)
 
+    def _update_theme(self, info=None):
+        """GTA ou react, pelo título/categoria da live (o streamer pode trocar no meio)."""
+        self._theme_at = time.time()
+        try:
+            info = info or sources.resolve(self.url, "worst")
+            new = sources.guess_theme(info)
+            if new != self.theme:
+                log.info("🎮 %s: tema da live agora é %s", self.name, "GTA" if new == "gta" else "react/outros")
+            self.theme = new
+        except Exception:
+            pass
+
     def _tick(self, final):
+        if not final and time.time() - self._theme_at > 600:
+            self._update_theme()
         self._analyze_new(final)
         self._score()
         if final and self.pending:
@@ -380,7 +396,8 @@ class ChannelWorker(threading.Thread):
                 safe_unlink(h)
                 return
             m = meta.make_meta(self.name, self.platform, self.url, lines, gain=gain, avoid=[r["title"] for r in prev],
-                               speech=speech or [], peak_rel=peak_rel, avoid_hooks=[r["overlay"] for r in prev])
+                               speech=speech or [], peak_rel=peak_rel, avoid_hooks=[r["overlay"] for r in prev],
+                               theme=self.theme)
             clip_id = db.insert("clips", {
                 "channel_id": self.id, "channel_name": self.name, "peak_time": job["peak"],
                 "created_at": time.time(), "score": q["final"] if not manual else 10.0,

@@ -121,6 +121,7 @@ def _process(vod_id):
     if name in ("kick", "twitch", "youtube"):
         name = (light.get("uploader_id") or light.get("channel") or light.get("uploader") or name).lower().replace(" ", "")
     _set(vod_id, title=title[:200], name=name)
+    theme = sources.guess_theme(light)
     log.info("🎬 VOD de %s: ouvindo o áudio pra achar os melhores momentos…", name)
 
     levels = _listen(vod_id, light)
@@ -179,7 +180,8 @@ def _process(vod_id):
             speech = transcribe.transcribe(h)   # o que o streamer falou no corte
             q = quality.evaluate(score, speech, t - start)
         m = meta.make_meta(name, v["platform"], channel_url, [], gain=gain, avoid=[r["title"] for r in prev],
-                           speech=speech or [], peak_rel=t - start, avoid_hooks=[r["overlay"] for r in prev])
+                           speech=speech or [], peak_rel=t - start, avoid_hooks=[r["overlay"] for r in prev],
+                           theme=theme)
         clip_id = db.insert("clips", {
             "channel_id": 0, "channel_name": name, "peak_time": time.time(), "created_at": time.time(),
             "score": q["final"],
