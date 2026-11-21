@@ -644,6 +644,121 @@ def _process_upload(raw, name, platform, theme):
         procs.safe_unlink(raw)
 
 
+# ------------------------------------------------------------ trecho de um VOD (você diz o tempo)
+def parse_time(t):
+    """'3:13:00', '3h13', '3h13m05s', '13:20' (min:seg) ou segundos -> segundos."""
+    t = (t or "").strip().lower().replace(" ", "").replace(",", ".")
+    if not t:
+        raise ValueError
+    t = re.sub(r"h(\d+)$", r"h\1m", t)          # "3h13" = 3 horas e 13 minutos
+    m = re.fullmatch(r"(?:(\d+)h)?(?:(\d+)m(?:in)?)?(?:(\d+(?:\.\d+)?)s?)?", t)
+    if m and any(m.groups()) and ("h" in t or "m" in t or "s" in t):
+        h, mi, s = m.groups()
+        return int(h or 0) * 3600 + int(mi or 0) * 60 + float(s or 0)
+    parts = t.split(":")
+    if not all(re.fullmatch(r"\d+(?:\.\d+)?", p) for p in parts) or len(parts) > 3:
+        raise ValueError
+    sec = 0.0
+    for p in parts:
+        sec = sec * 60 + float(p)
+    return sec
+
+
+def _fmt_t(s):
+    s = int(s)
+    return f"{s // 3600}:{s % 3600 // 60:02d}:{s % 60:02d}"
+
+
+def _process_vodclip(url, a, b, theme_in):
+    """Baixa só o pedaço escolhido do VOD (com a sobra antes e depois) e monta o corte."""
+    import json as _json
+    clip_id = None
+    h = None
+    try:
+        url, name, platform, _ = sources.parse_link(url)
+        info = sources.resolve(url, "best")
+        total = float(info.get("duration") or 0)
+        if total and a >= total:
+            raise RuntimeError(f"esse VOD tem só {_fmt_t(total)}, e o início ({_fmt_t(a)}) passa disso")
+        if total:
+            b = min(b, total)
+        if name in ("kick", "twitch", "youtube"):
+            name = (info.get("uploader_id") or info.get("channel") or info.get("uploader") or name).lower().replace(" ", "")
+        name = re.sub(r"[^a-z0-9_]", "", name.lower()) or "vod"
+        theme = theme_in if theme_in in ("gta", "react") else sources.guess_theme(info)
+        pad = float(settings.get("pad") or 0)
+        start = max(0.0, a - pad)
+        end = min(total, b + pad) if total else b + pad
+        cs, ce = a - start, b - start
+        h, _, _ = clip_paths("trechos", f"{name}_{_fmt_t(a).replace(':', 'h', 1).replace(':', 'm')}s_{int(time.time())}")
+        args = []
+        inputs = sources.ffmpeg_inputs(info)
+        for ar, u in inputs:                         # busca direto no servidor: baixa só esse pedaço
+            args += [*ar, "-ss", f"{start:.2f}", "-i", u]
+        maps = ["-map", "0:v:0", "-map", f"{1 if len(inputs) > 1 else 0}:a:0?"]
+        render.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", *args, "-t", f"{end - start:.2f}", *maps,
+                    *render.venc(), *render.AENC, "-movflags", "+faststart", str(h)], timeout=3600)
+        _, _, hdur = render.probe(h)
+        if hdur < 2:
+            raise RuntimeError("o pedaço baixado veio vazio")
+        ce = min(ce, hdur)
+        spoken, speech, words = listen(h, cs, ce)
+        peak = render.loudest_second(h, cs, ce - cs)          # pro zoom do estilo dinâmico
+        q = quality.evaluate(5.0, speech, (peak - cs) if peak is not None else (ce - cs) / 2, ce - cs)
+        ch = db.query("SELECT * FROM channels WHERE name=?", (name,))
+        ch_url = ch[0]["url"] if ch else PLATFORM_URL.get(platform, "https://kick.com/{n}").format(n=name)
+        prev = db.query("SELECT title, overlay FROM clips WHERE channel_name=? ORDER BY created_at DESC LIMIT 60", (name,))
+        m = meta.make_meta(name, platform, ch_url, [], speech=speech or [],
+                           peak_rel=(peak - cs) if peak is not None else None,
+                           avoid=[r["title"] for r in prev], avoid_hooks=[r["overlay"] for r in prev], theme=theme)
+        ex = extra_fields(h, cs, ce, peak, None, words)      # sem "começo/fim esperto": o tempo foi você que escolheu
+        clip_id = db.insert("clips", {
+            "channel_id": 0, "channel_name": name, "peak_time": time.time(), "created_at": time.time(),
+            "score": q["final"], "reasons": " · ".join([f"✂ trecho escolhido por você: {_fmt_t(a)} até {_fmt_t(b)}"] + q["reasons"]),
+            "file_h": rel(h), "platform": platform, "url": ch_url, "cam": ch[0]["cam"] if ch else None, "rendering": 1,
+            "source": "trecho", "features": _json.dumps(q["features"]) if q["features"] else None,
+            "signal_score": q["signal"], "content_score": q["content"], **m, **ex})
+        after_insert(clip_id)
+        plog.info("✂ Seu trecho do VOD de %s (%s até %s) está pronto no painel.", name, _fmt_t(a), _fmt_t(b))
+    except Exception as e:
+        plog.warning("⚠ Não deu pra cortar o trecho do VOD (%s).", str(e)[:200])
+        if clip_id:
+            db.update("clips", clip_id, {"rendering": 0, "warn": f"Falhou ao montar: {str(e)[:200]}"})
+        elif h is not None:
+            procs.safe_unlink(h)
+
+
+class VodClipIn(BaseModel):
+    url: str
+    start: str
+    end: str
+    theme: str = "auto"
+
+
+@app.post("/api/vodclip")
+def vod_clip(body: VodClipIn):
+    try:
+        a, b = parse_time(body.start), parse_time(body.end)
+    except ValueError:
+        raise HTTPException(400, "Não entendi o tempo. Escreva assim: 3:13:00 (horas:minutos:segundos).")
+    if b <= a:
+        raise HTTPException(400, "O fim tem que ser depois do começo.")
+    if b - a < 3:
+        raise HTTPException(400, "O trecho ficou curto demais (menos de 3 segundos).")
+    if b - a > 15 * 60:
+        raise HTTPException(400, "Trecho muito longo. O máximo é 15 minutos.")
+    url = body.url.strip()
+    if not url:
+        raise HTTPException(400, "Cole o link do VOD.")
+    _, _, platform, kind = sources.parse_link(url)
+    if kind != "vod":
+        raise HTTPException(400, "Esse link é de um canal. Cole o link do VÍDEO da live que já passou "
+                                 "(ex: kick.com/nome/videos/..., twitch.tv/videos/... ou youtube.com/watch?v=...).")
+    CLIP_POOL.submit(_process_vodclip, url, a, b, body.theme)
+    plog.info("✂ Baixando o trecho %s até %s do VOD… (só esse pedaço, com a sobra)", _fmt_t(a), _fmt_t(b))
+    return {"ok": True, "dur": b - a}
+
+
 @app.post("/api/upload")
 async def upload_clip(request: Request, name: str, platform: str = "kick", theme: str = "gta"):
     """Recebe um vídeo cortado por você e monta no mesmo estilo dos automáticos."""

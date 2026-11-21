@@ -129,6 +129,8 @@ Instale nos dois PCs do mesmo jeito: Python, extrair o zip e `INICIAR.bat`.
 - **🎬 Compilado pro YouTube:** junta cortes aprovados num vídeo deitado com o título de cada momento e os capítulos
   prontos pra descrição.
 - **📤 Enviar um corte seu:** manda um trecho que você cortou e ele sai no mesmo formato dos automáticos.
+- **✂ Cortar um trecho de VOD:** cole o link do vídeo da live e o tempo (ex: de 3:13:00 até 3:15:00). O programa
+  baixa só esse pedaço, com a sobra antes e depois, e monta o corte no mesmo estilo.
 
 ## Regras por streamer (campeonatos)
 Alguns canais têm regras próprias, aplicadas sozinhas só nos cortes deles (arquivo `app/rules.py`). Os outros canais seguem normais.

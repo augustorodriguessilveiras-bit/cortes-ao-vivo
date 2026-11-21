@@ -52,10 +52,12 @@ button.danger:hover{border-color:var(--live);color:var(--live)}
 .meter i{display:block;height:100%;background:linear-gradient(90deg,var(--ok),var(--warn),var(--live));border-radius:9px;transition:width .4s}
 .meter.prog i{background:linear-gradient(90deg,var(--info),var(--accent))}
 svg.spark{width:100%;height:34px;display:block}
-.actions{display:flex;gap:6px;flex-wrap:wrap}
+.actions{display:flex;gap:6px;flex-wrap:wrap;max-width:100%}
 .warn{font-size:13px;color:var(--warn)}
 .settings{display:flex;gap:14px 20px;flex-wrap:wrap;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:13.5px;color:var(--muted)}
-.settings label{display:flex;align-items:center;gap:8px}
+.settings label{display:flex;align-items:center;gap:8px;flex-wrap:wrap;max-width:100%;min-width:0}
+.settings select{max-width:100%;min-width:0;text-overflow:ellipsis}
+.settings > *{max-width:100%;min-width:0}
 .settings input[type=range]{width:110px;accent-color:var(--accent)}
 .settings output{color:var(--text);font-variant-numeric:tabular-nums;min-width:2.5em}
 .settings .wide{flex:1 1 100%}
@@ -198,7 +200,7 @@ details.meta[open] summary{margin-bottom:6px}
   <h2>VODs</h2>
   <div class="grid" id="vods"></div>
 
-  <h2>📤 Enviar um corte seu</h2>
+  <h2>📤 Enviar um corte seu / ✂ Cortar um trecho de VOD</h2>
   <div class="settings" id="upBox" style="flex-direction:column;align-items:stretch;gap:10px">
     <div class="muted">Cortou um trecho você mesmo? Envie aqui e o programa deixa no formato do TikTok/Reels/Shorts: câmera em cima (acha a webcam sozinho), título no vídeo, descrição, hashtags, tags e as regras do campeonato. Ele aparece junto com os outros cortes e dá pra editar igual.</div>
     <div class="add">
@@ -210,6 +212,15 @@ details.meta[open] summary{margin-bottom:6px}
       <button class="primary" id="upBtn">📤 Enviar</button>
     </div>
     <div id="upProg" class="muted" hidden></div>
+    <div class="muted" style="margin-top:6px"><b style="color:var(--text)">✂ Ou corte direto de um VOD:</b> cole o link do vídeo da live e o tempo da parte que você gostou (como aparece no player do VOD). O programa baixa só esse pedaço, com a sobra antes e depois pra você ajustar no editor.</div>
+    <div class="add">
+      <input type="text" id="tcUrl" placeholder="Link do VOD (kick.com/nome/videos/…, twitch.tv/videos/…, youtube.com/watch?v=…)" autocomplete="off">
+      <input type="text" id="tcFrom" placeholder="De (ex: 3:13:00)" autocomplete="off" style="max-width:140px;min-width:110px;flex:0 1 140px">
+      <input type="text" id="tcTo" placeholder="Até (ex: 3:15:00)" autocomplete="off" style="max-width:140px;min-width:110px;flex:0 1 140px">
+      <select id="tcTheme"><option value="auto">Tema: automático</option><option value="gta">GTA</option><option value="react">React / outros</option></select>
+      <button class="primary" id="tcBtn">✂ Cortar esse trecho</button>
+    </div>
+    <div id="tcInfo" class="muted"></div>
   </div>
 
   <h2>Ajustes</h2>
@@ -234,7 +245,7 @@ details.meta[open] summary{margin-bottom:6px}
     <div id="stInfo" class="muted">Calculando…</div>
     <div class="actions">
       <button class="small" data-clean="postados">Apagar vídeos dos já postados</button>
-      <button class="small" data-clean="novos_antigos">Apagar cortes novos não aprovados com mais de 3 dias</button>
+      <button class="small" data-clean="novos_antigos" style="white-space:normal;text-align:left">Apagar cortes novos não aprovados com mais de 3 dias</button>
       <button class="small" data-clean="lixo">Apagar arquivos esquecidos (sobras e temporários)</button>
       <button class="small" id="stRefresh">↻ Atualizar</button>
     </div>
@@ -431,6 +442,39 @@ function drawVertical(ctx, img, vw, vh, cam, W, H, caption, layout, opts = {}){
 }
 
 /* ------------------------------------------------------------ lives e VODs */
+/* ------------------------------------------------------------ trecho de um VOD */
+function parseT(t){
+  t = (t || "").trim().toLowerCase().replace(/\s/g, "").replace(",", ".");
+  if (!t) return null;
+  t = t.replace(/h(\d+)$/, "h$1m");   // "3h13" = 3 horas e 13 minutos
+  const hm = t.match(/^(?:(\d+)h)?(?:(\d+)m(?:in)?)?(?:(\d+(?:\.\d+)?)s?)?$/);
+  if (hm && /[hms]/.test(t) && (hm[1] || hm[2] || hm[3])) return (+hm[1] || 0) * 3600 + (+hm[2] || 0) * 60 + (+hm[3] || 0);
+  const p = t.split(":"); if (p.length > 3 || !p.every(x => /^\d+(\.\d+)?$/.test(x))) return null;
+  return p.reduce((a, x) => a * 60 + +x, 0);
+}
+const fmtHMS = s => { s = Math.round(s); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return h ? `${h}:${String(m).padStart(2, "0")}:${String(x).padStart(2, "0")}` : `${m}:${String(x).padStart(2, "0")}`; };
+function tcCheck(){
+  const a = parseT($("#tcFrom").value), b = parseT($("#tcTo").value), el = $("#tcInfo");
+  if (a == null || b == null){ el.textContent = ($("#tcFrom").value || $("#tcTo").value) && (a == null && $("#tcFrom").value || b == null && $("#tcTo").value) ? "⚠ Escreva o tempo assim: 3:13:00 (horas:minutos:segundos)." : ""; return null; }
+  if (b <= a){ el.textContent = "⚠ O fim tem que ser depois do começo."; return null; }
+  const d = b - a;
+  el.textContent = `Trecho de ${fmtHMS(d)} (de ${fmtHMS(a)} até ${fmtHMS(b)}).` + (d > 180 ? " ⚠ Passa de 3 min: o Shorts não aceita, e no TikTok/Reels corte longo costuma ter menos view." : d > 90 ? " Dica: cortes de até 1 min costumam ir melhor." : "");
+  return [a, b];
+}
+$("#tcFrom").addEventListener("input", tcCheck); $("#tcTo").addEventListener("input", tcCheck);
+$("#tcBtn").addEventListener("click", async () => {
+  const url = $("#tcUrl").value.trim(); if (!url) return toast("Cole o link do VOD.");
+  if (!tcCheck()) return toast("Confira o tempo de começo e fim (ex: 3:13:00 até 3:15:00).");
+  const btn = $("#tcBtn"); btn.disabled = true;
+  try {
+    await post("/api/vodclip", { url, start: $("#tcFrom").value, end: $("#tcTo").value, theme: $("#tcTheme").value });
+    $("#tcInfo").textContent = "✅ Baixando só esse pedaço do VOD e montando o corte… acompanhe em \"O que está acontecendo agora\". Em alguns minutos ele aparece em Cortes → Novos.";
+    $("#tcFrom").value = ""; $("#tcTo").value = "";
+    toast("Trecho enviado! Já já ele aparece na lista.");
+  } catch (e) { toast(e.message, 8000); }
+  finally { btn.disabled = false; }
+});
+
 /* ------------------------------------------------------------ enviar um corte seu */
 const RULE_KEYS = ["orenatovicente", "allanstag", "mitsuke", "luanz7", "sofiaespanha", "yayahuz"];
 function fillUpNames(){
@@ -575,7 +619,7 @@ function renderClips(force){
   if (!clips.length){ el.innerHTML = `<div class="empty">Os cortes aparecem aqui sozinhos quando o chat ou o áudio explodirem, ou quando você clicar em "✂ Cortar agora".</div>`; return; }
   el.innerHTML = clips.map(c => {
     const v = `?v=${Math.round(c.created_at)}`, id = c.id;
-    const when = c.source === "vod" ? "VOD" : c.source === "enviado" ? "📤 Enviado por você" : new Date(c.peak_time * 1000).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+    const when = c.source === "vod" ? "VOD" : c.source === "enviado" ? "📤 Enviado por você" : c.source === "trecho" ? "✂ Trecho de VOD escolhido por você" : new Date(c.peak_time * 1000).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
     const gone = !!c.files_deleted;
     const media = gone ? `<div class="ph" ${c.thumb ? `style="background:#000 url('/media/${c.thumb}${v}') center/cover;"` : ""}><span style="background:rgba(0,0,0,.75);padding:10px 12px;border-radius:10px">✅ Já postado<br>O vídeo foi apagado pra liberar espaço.<br>Título, descrição e tags continuam aqui.</span></div>`
       : c.rendering ? `<div class="ph">Montando o vídeo vertical…<br>em qualidade original</div>`
