@@ -14,8 +14,10 @@ from pydantic import BaseModel
 from . import config as C
 import urllib.parse
 
-from . import db, drive, meta, procs, quality, render, rules, settings, sources, version, vod
-from .recorder import CLIP_POOL, ChannelWorker, render_vertical_for
+import re
+
+from . import db, drive, meta, procs, quality, render, rules, settings, sources, transcribe, version, vod
+from .recorder import CLIP_POOL, ChannelWorker, clip_paths, rel, render_vertical_for
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(message)s", datefmt="%H:%M:%S")
 for _n in ("httpx", "urllib3", "streamlink"):
@@ -460,6 +462,76 @@ def lower_from_link(key: str, body: LinkIn):
         raise
     except Exception as e:
         raise HTTPException(400, f"Não consegui baixar do Drive: {e}")
+
+
+# ------------------------------------------------------------ corte enviado por você
+UP_EXT = (".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v", ".ts", ".flv")
+PLATFORM_URL = {"kick": "https://kick.com/{n}", "twitch": "https://www.twitch.tv/{n}", "youtube": "https://www.youtube.com/@{n}"}
+
+
+def _process_upload(raw, name, platform, theme):
+    """Transforma o vídeo enviado num corte igual aos automáticos (roda em segundo plano)."""
+    import json as _json
+    stamp = time.strftime("%Y%m%d_%H%M%S")
+    h, _, _ = clip_paths("enviados", f"{name}_enviado_{stamp}")
+    clip_id = None
+    try:
+        vw, vh, dur = render.probe(raw)
+        render.make_horizontal(["-i", str(raw)], h, 0, dur)        # deixa num formato padrão (mp4)
+        speech = transcribe.transcribe(h)
+        q = quality.evaluate(5.0, speech, dur * 0.5, dur)
+        ch = db.query("SELECT * FROM channels WHERE name=?", (name,))
+        url = ch[0]["url"] if ch else PLATFORM_URL.get(platform, "https://kick.com/{n}").format(n=name)
+        cam = ch[0]["cam"] if ch else None
+        prev = db.query("SELECT title, overlay FROM clips WHERE channel_name=? ORDER BY created_at DESC LIMIT 60", (name,))
+        m = meta.make_meta(name, platform, url, [], speech=speech or [], peak_rel=dur * 0.5,
+                           avoid=[r["title"] for r in prev], avoid_hooks=[r["overlay"] for r in prev], theme=theme)
+        clip_id = db.insert("clips", {
+            "channel_id": 0, "channel_name": name, "peak_time": time.time(), "created_at": time.time(),
+            "score": q["final"], "reasons": " · ".join(["📤 enviado por você"] + q["reasons"]), "file_h": rel(h),
+            "platform": platform, "url": url, "cam": cam, "rendering": 1, "source": "enviado",
+            # vídeo que já veio em pé: só encaixa no 9:16 (tela cheia)
+            "layout": "full" if vh / max(1, vw) > 1.2 else "auto",
+            "features": _json.dumps(q["features"]) if q["features"] else None,
+            "signal_score": q["signal"], "content_score": q["content"], **m})
+        render_vertical_for(clip_id)
+        plog.info("📤 Seu corte de %s está pronto no painel.", name)
+    except Exception as e:
+        plog.warning("⚠ Não deu pra montar o corte enviado (%s).", str(e)[:150])
+        if clip_id:
+            db.update("clips", clip_id, {"rendering": 0, "warn": f"Falhou ao montar: {str(e)[:200]}"})
+    finally:
+        procs.safe_unlink(raw)
+
+
+@app.post("/api/upload")
+async def upload_clip(request: Request, name: str, platform: str = "kick", theme: str = "gta"):
+    """Recebe um vídeo cortado por você e monta no mesmo estilo dos automáticos."""
+    fname = urllib.parse.unquote(request.headers.get("x-filename", "video.mp4"))
+    ext = ("." + fname.rsplit(".", 1)[-1].lower()) if "." in fname else ".mp4"
+    if ext not in UP_EXT:
+        raise HTTPException(400, f"Formato {ext} não serve. Envie MP4, MOV, MKV, WEBM ou AVI.")
+    name = re.sub(r"[^a-z0-9_]", "", sources.parse_link(name)[1].lower()) if ("." in name or "/" in name) \
+        else re.sub(r"[^a-z0-9_]", "", name.lower().lstrip("@"))
+    if not name:
+        raise HTTPException(400, "Escreva de qual streamer é o corte.")
+    if platform not in PLATFORM_URL:
+        platform = "kick"
+    theme = theme if theme in ("gta", "react") else "gta"
+    up = C.CLIPS_DIR / "enviados"
+    up.mkdir(parents=True, exist_ok=True)
+    raw = up / f"_recebendo_{int(time.time() * 1000)}{ext}"
+    size = 0
+    with open(raw, "wb") as f:                          # grava aos pouquinhos (vídeo grande não enche a memória)
+        async for chunk in request.stream():
+            f.write(chunk)
+            size += len(chunk)
+    if size < 10_000:
+        procs.safe_unlink(raw)
+        raise HTTPException(400, "O arquivo veio vazio ou incompleto. Tente de novo.")
+    plog.info("📤 Recebi seu corte de %s (%d MB). Montando no estilo dos cortes…", name, size // 1_000_000)
+    CLIP_POOL.submit(_process_upload, raw, name, platform, theme)
+    return {"ok": True, "name": name}
 
 
 @app.post("/api/clips/{clip_id}/retext")

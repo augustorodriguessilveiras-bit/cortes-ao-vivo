@@ -177,6 +177,20 @@ details.meta[open] summary{margin-bottom:6px}
   <h2>VODs</h2>
   <div class="grid" id="vods"></div>
 
+  <h2>📤 Enviar um corte seu</h2>
+  <div class="settings" id="upBox" style="flex-direction:column;align-items:stretch;gap:10px">
+    <div class="muted">Cortou um trecho você mesmo? Envie aqui e o programa deixa no formato do TikTok/Reels/Shorts: câmera em cima (acha a webcam sozinho), título no vídeo, legenda, hashtags, tags e as regras do campeonato. Ele aparece junto com os outros cortes e dá pra editar igual.</div>
+    <div class="add">
+      <input type="file" id="upFile" accept="video/*,.mp4,.mov,.mkv,.webm,.avi,.m4v,.ts,.flv" style="min-width:200px">
+      <input type="text" id="upName" list="upNames" placeholder="De qual streamer? (ex: orenatovicente)" autocomplete="off" style="max-width:280px">
+      <datalist id="upNames"></datalist>
+      <select id="upPlat"><option value="kick">Kick</option><option value="twitch">Twitch</option><option value="youtube">YouTube</option></select>
+      <select id="upTheme"><option value="gta">GTA</option><option value="react">React (vídeo, filme, outro jogo)</option></select>
+      <button class="primary" id="upBtn">📤 Enviar</button>
+    </div>
+    <div id="upProg" class="muted" hidden></div>
+  </div>
+
   <h2>Ajustes</h2>
   <div class="settings">
     <label>Nota mínima p/ cortar <input type="range" id="min_score" min="3" max="9.5" step="0.5"><output></output></label>
@@ -367,6 +381,41 @@ function drawVertical(ctx, img, vw, vh, cam, W, H, caption, layout, opts = {}){
 }
 
 /* ------------------------------------------------------------ lives e VODs */
+/* ------------------------------------------------------------ enviar um corte seu */
+const RULE_KEYS = ["orenatovicente", "allanstag", "mitsuke", "luanz7", "sofiaespanha", "yayahuz"];
+function fillUpNames(){
+  const names = [...new Set([...ST.channels.map(c => c.name), ...RULE_KEYS])];
+  const dl = $("#upNames"), html = names.map(n => `<option value="${esc(n)}">`).join("");
+  if (dl.innerHTML !== html) dl.innerHTML = html;
+}
+$("#upName").addEventListener("change", () => {
+  const ch = ST.channels.find(c => c.name === $("#upName").value.trim().toLowerCase());
+  if (ch && ch.platform) $("#upPlat").value = ch.platform;
+  if (["sofiaespanha"].includes($("#upName").value.trim().toLowerCase())) $("#upPlat").value = "twitch";
+});
+$("#upBtn").addEventListener("click", () => {
+  const f = $("#upFile").files[0], name = $("#upName").value.trim();
+  if (!f) return toast("Escolha o vídeo do corte primeiro.");
+  if (!name) return toast("Escreva de qual streamer é o corte.");
+  const q = new URLSearchParams({ name, platform: $("#upPlat").value, theme: $("#upTheme").value });
+  const xhr = new XMLHttpRequest(), prog = $("#upProg"), btn = $("#upBtn");
+  btn.disabled = true; prog.hidden = false; prog.textContent = "Enviando… 0%";
+  xhr.upload.onprogress = e => { if (e.lengthComputable) prog.textContent = `Enviando… ${Math.round(e.loaded / e.total * 100)}%`; };
+  xhr.onload = () => {
+    btn.disabled = false;
+    let j = {}; try { j = JSON.parse(xhr.responseText); } catch {}
+    if (xhr.status === 404 && !j.name){ showOldServer(); prog.textContent = "O programa aberto é uma versão antiga. Feche e abra o INICIAR.bat de novo."; return; }
+    if (xhr.status >= 400){ prog.textContent = "⚠ " + (j.detail || "Não deu pra enviar."); return; }
+    prog.textContent = "✅ Recebido! Montando o corte… em 1–3 minutos ele aparece em Cortes → Novos.";
+    $("#upFile").value = "";
+    toast("Corte enviado! Já já ele aparece na lista.");
+  };
+  xhr.onerror = () => { btn.disabled = false; prog.textContent = "⚠ O envio falhou. O programa está aberto?"; };
+  xhr.open("POST", "/api/upload?" + q);
+  xhr.setRequestHeader("X-Filename", encodeURIComponent(f.name));
+  xhr.send(f);
+});
+
 const statusTxt = { gravando: "Ao vivo · gravando", offline: "Offline (esperando entrar ao vivo)", verificando: "Verificando…", iniciando: "Iniciando…", erro: "Erro" };
 const elapsed = t => { const s = Math.floor(Date.now() / 1000 - t), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return h ? `${h}h${String(m).padStart(2, "0")}` : `${m} min`; };
 function spark(h, min){
@@ -375,6 +424,7 @@ function spark(h, min){
   return `<svg class="spark" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><line x1="0" x2="100" y1="${y}" y2="${y}" stroke="#ff4f9a" stroke-width="1" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/><polyline points="${pts}" fill="none" stroke="#ffb347" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>`;
 }
 function renderLives(){
+  fillUpNames();
   const el = $("#lives"), cs = ST.channels;
   el.innerHTML = !cs.length ? `<div class="empty">Nenhum canal ainda. Cole o link de um canal acima.</div>` : cs.map(c => {
     const live = c.status === "gravando";
@@ -460,7 +510,7 @@ function renderClips(force){
   if (!clips.length){ el.innerHTML = `<div class="empty">Os cortes aparecem aqui sozinhos quando o chat ou o áudio explodirem, ou quando você clicar em "✂ Cortar agora".</div>`; return; }
   el.innerHTML = clips.map(c => {
     const v = `?v=${Math.round(c.created_at)}`, id = c.id;
-    const when = c.source === "vod" ? "VOD" : new Date(c.peak_time * 1000).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+    const when = c.source === "vod" ? "VOD" : c.source === "enviado" ? "📤 Enviado por você" : new Date(c.peak_time * 1000).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
     const gone = !!c.files_deleted;
     const media = gone ? `<div class="ph" ${c.thumb ? `style="background:#000 url('/media/${c.thumb}${v}') center/cover;"` : ""}><span style="background:rgba(0,0,0,.75);padding:10px 12px;border-radius:10px">✅ Já postado<br>O vídeo foi apagado pra liberar espaço.<br>Título, descrição e tags continuam aqui.</span></div>`
       : c.rendering ? `<div class="ph">Montando o vídeo vertical…<br>em qualidade original</div>`
