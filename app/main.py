@@ -122,7 +122,18 @@ def state():
 
 @app.post("/api/settings")
 def save_settings(body: dict):
-    return settings.update(body)
+    out = settings.update(body)
+    if "vod_parallel" in body:
+        vod.wake()
+    return out
+
+
+@app.post("/api/vods/{vid}/front")
+def vod_front(vid: int):
+    if not vod.to_front(vid):
+        raise HTTPException(400, "Esse VOD não está mais na fila (já começou ou terminou).")
+    plog.info("⏫ VOD passou na frente da fila.")
+    return {"ok": True}
 
 
 # ------------------------------------------------------------ canais e VODs (um campo só)
@@ -645,6 +656,9 @@ def _process_upload(raw, name, platform, theme):
 
 
 # ------------------------------------------------------------ trecho de um VOD (você diz o tempo)
+# fila própria pros cortes que você pede (trecho de VOD e corte enviado): não esperam os VODs nem as lives
+from concurrent.futures import ThreadPoolExecutor
+MANUAL_POOL = ThreadPoolExecutor(max_workers=1)
 def parse_time(t):
     """'3:13:00', '3h13', '3h13m05s', '13:20' (min:seg) ou segundos -> segundos."""
     t = (t or "").strip().lower().replace(" ", "").replace(",", ".")
@@ -754,7 +768,7 @@ def vod_clip(body: VodClipIn):
     if kind != "vod":
         raise HTTPException(400, "Esse link é de um canal. Cole o link do VÍDEO da live que já passou "
                                  "(ex: kick.com/nome/videos/..., twitch.tv/videos/... ou youtube.com/watch?v=...).")
-    CLIP_POOL.submit(_process_vodclip, url, a, b, body.theme)
+    MANUAL_POOL.submit(_process_vodclip, url, a, b, body.theme)
     plog.info("✂ Baixando o trecho %s até %s do VOD… (só esse pedaço, com a sobra)", _fmt_t(a), _fmt_t(b))
     return {"ok": True, "dur": b - a}
 
@@ -785,7 +799,7 @@ async def upload_clip(request: Request, name: str, platform: str = "kick", theme
         procs.safe_unlink(raw)
         raise HTTPException(400, "O arquivo veio vazio ou incompleto. Tente de novo.")
     plog.info("📤 Recebi seu corte de %s (%d MB). Montando no estilo dos cortes…", name, size // 1_000_000)
-    CLIP_POOL.submit(_process_upload, raw, name, platform, theme)
+    MANUAL_POOL.submit(_process_upload, raw, name, platform, theme)
     return {"ok": True, "name": name}
 
 

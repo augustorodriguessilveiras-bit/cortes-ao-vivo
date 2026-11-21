@@ -128,6 +128,8 @@ Instale nos dois PCs do mesmo jeito: Python, extrair o zip e `INICIAR.bat`.
 - **♻ Corte repetido:** se o mesmo momento for cortado duas vezes (ex: da live e do VOD), o cartão avisa.
 - **🎬 Compilado pro YouTube:** junta cortes aprovados num vídeo deitado com o título de cada momento e os capítulos
   prontos pra descrição.
+- **Fila dos VODs:** 2 VODs são feitos ao mesmo tempo (muda em Ajustes: 1 a 3). Nos que estão esperando aparece
+  ⏫ Passar na frente. Trecho de VOD por tempo e corte enviado têm fila própria e não esperam os VODs.
 - **📤 Enviar um corte seu:** manda um trecho que você cortou e ele sai no mesmo formato dos automáticos.
 - **✂ Cortar um trecho de VOD:** cole o link do vídeo da live e o tempo (ex: de 3:13:00 até 3:15:00). O programa
   baixa só esse pedaço, com a sobra antes e depois, e monta o corte no mesmo estilo.

@@ -16,6 +16,7 @@ DEFAULTS = {
     "posted_cleanup": True,            # ao marcar "postado", apaga os vídeos pra liberar espaço
     "audio_mode": "auto",              # auto: só mexe se estiver muito baixo ou estourando · off: nunca mexe
     "pad": 30,                         # sobra guardada antes e depois do corte (pra puxar mais no editor)
+    "vod_parallel": 2,                 # quantos VODs são processados ao mesmo tempo (1 a 3)
     "style": "padrao",                 # estilo dos cortes novos: padrao · dinamico (zoom e começo/fim esperto)
 }
 _lock = threading.Lock()
@@ -47,6 +48,7 @@ def update(changes: dict):
         if data.get("style") not in ("padrao", "dinamico"):
             data["style"] = "padrao"
         data["pad"] = max(0, min(60, int(data.get("pad", 30))))
+        data["vod_parallel"] = max(1, min(3, int(data.get("vod_parallel", 2))))
         if data.get("audio_mode") not in ("auto", "off"):
             data["audio_mode"] = "auto"
         C.SETTINGS_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")

@@ -230,6 +230,7 @@ details.meta[open] summary{margin-bottom:6px}
     <span class="wide muted" id="learnInfo"></span>
     <label>Duração do corte <input type="range" id="dur" min="20" max="90" step="5"><output></output></label>
     <label>Máx. cortes por VOD <input type="range" id="vod_max" min="3" max="40" step="1"><output></output></label>
+    <label>VODs ao mesmo tempo <input type="range" id="vod_parallel" min="1" max="3" step="1"><output></output></label>
     <label><input type="checkbox" id="ov_on"> Título dentro do vídeo</label>
     <label><input type="checkbox" id="posted_cleanup"> Apagar o vídeo quando marcar como postado</label>
     <label>Texto aparece por <input type="range" id="ov_secs" min="3" max="41" step="1"><output></output></label>
@@ -551,6 +552,7 @@ function renderLives(){
       ${v.error ? `<div class="warn">${esc(v.error)}</div>` : ""}
       ${done ? "" : `<div class="meter prog"><i style="width:${Math.round(v.progress * 100)}%"></i></div>`}
       <div class="actions"><a class="btn small" href="${esc(v.url)}" target="_blank" rel="noopener">Abrir vídeo ↗</a>
+        ${/^na fila \(/.test(v.status) ? `<button class="small primary" data-vod="front" data-id="${v.id}">⏫ Passar na frente</button>` : ""}
         ${done ? `<button class="small" data-vod="forget" data-id="${v.id}">Tirar da lista</button>` : `<button class="small danger" data-vod="cancel" data-id="${v.id}">Cancelar</button>`}</div>
     </div>`;
   }).join("");
@@ -576,8 +578,8 @@ function renderLives(){
 let settingsBound = false, saveSet = null;
 function bindSettings(){
   if (settingsBound) return; settingsBound = true;
-  const fmt = { pad: v => +v === 0 ? "nenhuma" : `${v}s antes e ${v}s depois`, style: v => v, min_score: v => (+v).toFixed(1), discard_below: v => +v === 0 ? "nunca" : (+v).toFixed(1), dur: v => `${v}s (${Math.round(v * 2 / 3)}s antes do momento, ${v - Math.round(v * 2 / 3)}s depois)`, vod_max: v => v, ov_secs: v => +v > 40 ? "o vídeo todo" : v + "s" };
-  for (const id of ["min_score", "discard_below", "dur", "vod_max", "ov_secs", "ov_on", "tags", "audio_mode", "posted_cleanup", "pad", "style"]){
+  const fmt = { vod_parallel: v => +v === 1 ? "1 (um de cada vez)" : +v === 3 ? "3 (só se o PC for forte)" : `${v}`, pad: v => +v === 0 ? "nenhuma" : `${v}s antes e ${v}s depois`, style: v => v, min_score: v => (+v).toFixed(1), discard_below: v => +v === 0 ? "nunca" : (+v).toFixed(1), dur: v => `${v}s (${Math.round(v * 2 / 3)}s antes do momento, ${v - Math.round(v * 2 / 3)}s depois)`, vod_max: v => v, ov_secs: v => +v > 40 ? "o vídeo todo" : v + "s" };
+  for (const id of ["min_score", "discard_below", "dur", "vod_max", "ov_secs", "ov_on", "tags", "audio_mode", "posted_cleanup", "pad", "style", "vod_parallel"]){
     const el = $("#" + id), out = el.parentElement.querySelector("output"), val = ST.settings[id];
     if (el.type === "checkbox") el.checked = !!val; else el.value = val;
     if (out) out.textContent = fmt[id](val);
@@ -956,7 +958,11 @@ $("#lives").addEventListener("click", async e => {
 });
 $("#vods").addEventListener("click", async e => {
   const b = e.target.closest("button[data-vod]"); if (!b) return;
-  await api(`/api/vods/${b.dataset.id}${b.dataset.vod === "forget" ? "/forget" : ""}`, { method: "DELETE" }); loadState();
+  try {
+    if (b.dataset.vod === "front"){ await post(`/api/vods/${b.dataset.id}/front`); toast("Esse VOD passou na frente da fila."); }
+    else await api(`/api/vods/${b.dataset.id}${b.dataset.vod === "forget" ? "/forget" : ""}`, { method: "DELETE" });
+  } catch (err) { toast(err.message); }
+  loadState();
 });
 async function copy(text, msg){ try { await navigator.clipboard.writeText(text); toast(msg); } catch { toast("Não deu pra copiar. Selecione o texto e use Ctrl+C."); } }
 $("#clips").addEventListener("click", async e => {

@@ -21,16 +21,56 @@ from .recorder import after_insert, clip_paths, extra_fields, listen, rel, rende
 
 log = logging.getLogger("vod")
 SR = 8000
-_q = queue.Queue()
+_pending = []                 # fila (o primeiro é o próximo)
+_running = set()
+_cv = threading.Condition()
 _stop_ids = set()
+MAX_PARALLEL = 3
+
+
+def _limit():
+    try:
+        return max(1, min(MAX_PARALLEL, int(settings.get("vod_parallel"))))
+    except Exception:
+        return 2
+
+
+def _mark_queue():
+    for i, vid in enumerate(_pending, 1):
+        db.update("vods", vid, {"status": "na fila" if i == 1 else f"na fila ({i}º)", "progress": 0})
 
 
 def enqueue(vod_id):
-    _q.put(vod_id)
+    with _cv:
+        if vod_id not in _pending and vod_id not in _running:
+            _pending.append(vod_id)
+            _mark_queue()
+        _cv.notify_all()
+
+
+def to_front(vod_id):
+    """Passa esse VOD na frente da fila."""
+    with _cv:
+        if vod_id in _pending:
+            _pending.remove(vod_id)
+            _pending.insert(0, vod_id)
+            _mark_queue()
+            return True
+    return False
 
 
 def cancel(vod_id):
     _stop_ids.add(vod_id)
+    with _cv:
+        if vod_id in _pending:
+            _pending.remove(vod_id)
+            _mark_queue()
+
+
+def wake():
+    """Chamar quando mudar quantos VODs rodam juntos."""
+    with _cv:
+        _cv.notify_all()
 
 
 def _set(vod_id, **kw):
@@ -203,7 +243,12 @@ def _process(vod_id):
 
 def worker():
     while True:
-        vod_id = _q.get()
+        with _cv:
+            while not _pending or len(_running) >= _limit():
+                _cv.wait(timeout=5)
+            vod_id = _pending.pop(0)
+            _running.add(vod_id)
+            _mark_queue()
         try:
             if vod_id not in _stop_ids:
                 _process(vod_id)
@@ -214,9 +259,14 @@ def worker():
                 _set(vod_id, status="cancelado", error=None)
             else:
                 _set(vod_id, status="erro", error=msg[:300])
+        finally:
+            with _cv:
+                _running.discard(vod_id)
+                _cv.notify_all()
 
 
 def start():
-    threading.Thread(target=worker, daemon=True).start()
+    for _ in range(MAX_PARALLEL):          # até 3 juntos; o ajuste "VODs ao mesmo tempo" decide quantos rodam
+        threading.Thread(target=worker, daemon=True).start()
     for v in db.query("SELECT id FROM vods WHERE status NOT LIKE 'pronto%' AND status NOT IN ('erro','cancelado')"):
         enqueue(v["id"])
