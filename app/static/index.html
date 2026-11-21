@@ -575,7 +575,17 @@ function renderLives(){
 }
 
 /* ------------------------------------------------------------ ajustes */
-let settingsBound = false, saveSet = null;
+let settingsBound = false, saveSet = null, pendingSet = {};
+async function flushSettings(){
+  const body = pendingSet; pendingSet = {}; clearTimeout(saveSet);
+  if (!Object.keys(body).length) return;
+  try {
+    const saved = await post("/api/settings", body);
+    const off = Object.keys(body).filter(k => String(saved[k]) !== String(body[k]));
+    toast(off.length ? `⚠ Alguns ajustes não salvaram (${off.join(", ")}). Tente de novo.` : "✓ Ajuste salvo. Vale pros próximos cortes.", 2500);
+  } catch (e) { Object.assign(pendingSet, body, pendingSet); toast("⚠ Não salvou o ajuste: " + e.message); }
+}
+window.addEventListener("beforeunload", () => { if (Object.keys(pendingSet).length) navigator.sendBeacon?.("/api/settings", new Blob([JSON.stringify(pendingSet)], { type: "application/json" })); });
 function bindSettings(){
   if (settingsBound) return; settingsBound = true;
   const fmt = { vod_parallel: v => +v === 1 ? "1 (um de cada vez)" : +v === 3 ? "3 (só se o PC for forte)" : `${v}`, pad: v => +v === 0 ? "nenhuma" : `${v}s antes e ${v}s depois`, style: v => v, min_score: v => (+v).toFixed(1), discard_below: v => +v === 0 ? "nunca" : (+v).toFixed(1), dur: v => `${v}s (${Math.round(v * 2 / 3)}s antes do momento, ${v - Math.round(v * 2 / 3)}s depois)`, vod_max: v => v, ov_secs: v => +v > 40 ? "o vídeo todo" : v + "s" };
@@ -586,8 +596,8 @@ function bindSettings(){
     el.addEventListener(el.type === "checkbox" || el.tagName === "SELECT" ? "change" : "input", () => {
       const v = el.type === "checkbox" ? el.checked : el.type === "range" ? +el.value : el.value;
       if (out) out.textContent = fmt[id](v);
-      ST.settings[id] = v; clearTimeout(saveSet);
-      saveSet = setTimeout(() => post("/api/settings", { [id]: v }).catch(e => toast(e.message)), 400);
+      ST.settings[id] = v; pendingSet[id] = v; clearTimeout(saveSet);
+      saveSet = setTimeout(flushSettings, 500);      // junta tudo que mudou e salva de uma vez
     });
   }
 }
