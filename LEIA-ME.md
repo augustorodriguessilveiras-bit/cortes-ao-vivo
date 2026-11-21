@@ -132,7 +132,9 @@ Instale nos dois PCs do mesmo jeito: Python, extrair o zip e `INICIAR.bat`.
   ⏫ Passar na frente. Trecho de VOD por tempo e corte enviado têm fila própria e não esperam os VODs.
 - **📤 Enviar um corte seu:** manda um trecho que você cortou e ele sai no mesmo formato dos automáticos.
 - **✂ Cortar um trecho de VOD:** cole o link do vídeo da live e o tempo (ex: de 3:13:00 até 3:15:00). O programa
-  baixa só esse pedaço, com a sobra antes e depois, e monta o corte no mesmo estilo.
+  baixa só esse pedaço, com a sobra antes e depois, e monta o corte no mesmo estilo. Escolha "1 corte" (o trecho
+  todo) ou "Até 3 cortes" (os momentos mais fortes do trecho). Link com tempo (ex: ...?t=3h13m) colado na caixa de
+  cima vai direto pra cá, em vez de processar o VOD inteiro.
 
 ## Regras por streamer (campeonatos)
 Alguns canais têm regras próprias, aplicadas sozinhas só nos cortes deles (arquivo `app/rules.py`). Os outros canais seguem normais.

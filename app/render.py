@@ -472,6 +472,20 @@ def make_horizontal(inputs, out, offset, dur):
          "-map", "0:v:0", "-map", "0:a:0?", *venc(), *AENC, "-movflags", "+faststart", str(out)], timeout=1800)
 
 
+def second_levels(src, ts=0.0, dur=None):
+    """Volume (RMS) de cada segundo do trecho. Lista vazia se não der pra ouvir."""
+    try:
+        import numpy as np
+        seek = ["-ss", f"{ts:.2f}"] + (["-t", f"{dur:.2f}"] if dur else [])
+        r = subprocess.run(["ffmpeg", "-v", "error", *seek, "-i", str(src), "-vn", "-ac", "1", "-ar", "8000",
+                            "-f", "f32le", "-"], capture_output=True, creationflags=NO_WINDOW, timeout=600)
+        a = np.frombuffer(r.stdout, np.float32)
+        n = len(a) // 8000
+        return [float(x) for x in np.sqrt(np.mean(a[: n * 8000].reshape(n, 8000) ** 2, axis=1))] if n else []
+    except Exception:
+        return []
+
+
 def loudest_second(src, ts=0.0, dur=None):
     """Segundo mais alto (grito/reação) do trecho, contando do começo do arquivo. None se não der pra ouvir."""
     try:

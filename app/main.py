@@ -683,10 +683,49 @@ def _fmt_t(s):
     return f"{s // 3600}:{s % 3600 // 60:02d}:{s % 60:02d}"
 
 
-def _process_vodclip(url, a, b, theme_in):
-    """Baixa só o pedaço escolhido do VOD (com a sobra antes e depois) e monta o corte."""
+def _clip_from_file(h, cs, ce, peak, name, platform, ch_url, cam, theme, label):
+    """Cria o corte a partir de um vídeo já baixado (com sobra). cs/ce: onde está o corte dentro dele."""
     import json as _json
-    clip_id = None
+    spoken, speech, words = listen(h, cs, ce)
+    if peak is None:
+        peak = render.loudest_second(h, cs, ce - cs)          # pro zoom do estilo dinâmico
+    q = quality.evaluate(5.0, speech, (peak - cs) if peak is not None else (ce - cs) / 2, ce - cs)
+    prev = db.query("SELECT title, overlay FROM clips WHERE channel_name=? ORDER BY created_at DESC LIMIT 60", (name,))
+    m = meta.make_meta(name, platform, ch_url, [], speech=speech or [],
+                       peak_rel=(peak - cs) if peak is not None else None,
+                       avoid=[r["title"] for r in prev], avoid_hooks=[r["overlay"] for r in prev], theme=theme)
+    ex = extra_fields(h, cs, ce, peak, None, words)          # sem "começo/fim esperto": o tempo foi você que escolheu
+    clip_id = db.insert("clips", {
+        "channel_id": 0, "channel_name": name, "peak_time": time.time(), "created_at": time.time(),
+        "score": q["final"], "reasons": " · ".join([label] + q["reasons"]),
+        "file_h": rel(h), "platform": platform, "url": ch_url, "cam": cam, "rendering": 1,
+        "source": "trecho", "features": _json.dumps(q["features"]) if q["features"] else None,
+        "signal_score": q["signal"], "content_score": q["content"], **m, **ex})
+    try:
+        after_insert(clip_id)
+    except Exception as e:
+        db.update("clips", clip_id, {"rendering": 0, "warn": f"Falhou ao montar: {str(e)[:200]}"})
+        raise
+    return clip_id
+
+
+def _pick_moments(levels, n, length):
+    """Os n segundos mais fortes do trecho, longe um do outro (cada um vira um corte)."""
+    if not levels:
+        return []
+    sm = [max(levels[max(0, i - 1): i + 2]) for i in range(len(levels))]
+    order = sorted(range(len(sm)), key=lambda i: -sm[i])
+    out = []
+    for i in order:
+        if all(abs(i - o) >= length for o in out):         # um corte não repete pedaço do outro
+            out.append(i)
+        if len(out) >= n:
+            break
+    return sorted(out)
+
+
+def _process_vodclip(url, a, b, theme_in, count=1):
+    """Baixa só o pedaço escolhido do VOD (com a sobra antes e depois) e monta 1 corte, ou até 3 dentro dele."""
     h = None
     try:
         url, name, platform, _ = sources.parse_link(url)
@@ -716,30 +755,43 @@ def _process_vodclip(url, a, b, theme_in):
         if hdur < 2:
             raise RuntimeError("o pedaço baixado veio vazio")
         ce = min(ce, hdur)
-        spoken, speech, words = listen(h, cs, ce)
-        peak = render.loudest_second(h, cs, ce - cs)          # pro zoom do estilo dinâmico
-        q = quality.evaluate(5.0, speech, (peak - cs) if peak is not None else (ce - cs) / 2, ce - cs)
         ch = db.query("SELECT * FROM channels WHERE name=?", (name,))
         ch_url = ch[0]["url"] if ch else PLATFORM_URL.get(platform, "https://kick.com/{n}").format(n=name)
-        prev = db.query("SELECT title, overlay FROM clips WHERE channel_name=? ORDER BY created_at DESC LIMIT 60", (name,))
-        m = meta.make_meta(name, platform, ch_url, [], speech=speech or [],
-                           peak_rel=(peak - cs) if peak is not None else None,
-                           avoid=[r["title"] for r in prev], avoid_hooks=[r["overlay"] for r in prev], theme=theme)
-        ex = extra_fields(h, cs, ce, peak, None, words)      # sem "começo/fim esperto": o tempo foi você que escolheu
-        clip_id = db.insert("clips", {
-            "channel_id": 0, "channel_name": name, "peak_time": time.time(), "created_at": time.time(),
-            "score": q["final"], "reasons": " · ".join([f"✂ trecho escolhido por você: {_fmt_t(a)} até {_fmt_t(b)}"] + q["reasons"]),
-            "file_h": rel(h), "platform": platform, "url": ch_url, "cam": ch[0]["cam"] if ch else None, "rendering": 1,
-            "source": "trecho", "features": _json.dumps(q["features"]) if q["features"] else None,
-            "signal_score": q["signal"], "content_score": q["content"], **m, **ex})
-        after_insert(clip_id)
-        plog.info("✂ Seu trecho do VOD de %s (%s até %s) está pronto no painel.", name, _fmt_t(a), _fmt_t(b))
+        cam = ch[0]["cam"] if ch else None
+        label = f"✂ trecho escolhido por você: {_fmt_t(a)} até {_fmt_t(b)}"
+        cfg = settings.get_all()
+        length = float(cfg["dur"])
+        if count <= 1 or ce - cs < length * 1.6:
+            # 1 corte: o trecho todo (o vídeo baixado passa a ser o do corte)
+            hh, h = h, None
+            _clip_from_file(hh, cs, ce, None, name, platform, ch_url, cam, theme, label)
+            plog.info("✂ Seu trecho do VOD de %s (%s até %s) está pronto no painel.", name, _fmt_t(a), _fmt_t(b))
+            return
+        # até 3 cortes: os momentos mais fortes dentro do trecho, cada um do tamanho do "Duração do corte"
+        moments = _pick_moments(render.second_levels(h, cs, ce - cs), count, length)
+        wins, prev_end = [], cs
+        for sec in moments:
+            p = cs + sec + 0.5
+            ws = max(prev_end, min(max(cs, p - cfg["before"]), ce - length))
+            if ws + length > ce + 0.5:           # não cabe sem repetir pedaço do anterior
+                continue
+            wins.append((p, ws, ws + length))
+            prev_end = ws + length
+        made = 0
+        for k, (p, ws, we) in enumerate(wins, 1):
+            s0, e0 = max(0.0, ws - pad), min(hdur, we + pad)
+            hk, _, _ = clip_paths("trechos", f"{h.stem.removesuffix('_h')}_{k}")
+            render.make_horizontal(["-i", str(h)], hk, s0, e0 - s0)
+            when = f"{_fmt_t(start + ws)} até {_fmt_t(start + we)}"
+            _clip_from_file(hk, ws - s0, we - s0, p - s0, name, platform, ch_url, cam, theme,
+                            f"{label} · corte {k} de {len(wins)} ({when})")
+            made += 1
+        plog.info("✂ %d cortes do seu trecho do VOD de %s (%s até %s) prontos no painel.", made, name, _fmt_t(a), _fmt_t(b))
     except Exception as e:
         plog.warning("⚠ Não deu pra cortar o trecho do VOD (%s).", str(e)[:200])
-        if clip_id:
-            db.update("clips", clip_id, {"rendering": 0, "warn": f"Falhou ao montar: {str(e)[:200]}"})
-        elif h is not None:
-            procs.safe_unlink(h)
+    finally:
+        if h is not None:
+            procs.safe_unlink(h)        # o pedaço grande baixado (os cortes têm o vídeo deles)
 
 
 class VodClipIn(BaseModel):
@@ -747,6 +799,7 @@ class VodClipIn(BaseModel):
     start: str
     end: str
     theme: str = "auto"
+    count: int = 1
 
 
 @app.post("/api/vodclip")
@@ -768,7 +821,7 @@ def vod_clip(body: VodClipIn):
     if kind != "vod":
         raise HTTPException(400, "Esse link é de um canal. Cole o link do VÍDEO da live que já passou "
                                  "(ex: kick.com/nome/videos/..., twitch.tv/videos/... ou youtube.com/watch?v=...).")
-    MANUAL_POOL.submit(_process_vodclip, url, a, b, body.theme)
+    MANUAL_POOL.submit(_process_vodclip, url, a, b, body.theme, max(1, min(3, body.count)))
     plog.info("✂ Baixando o trecho %s até %s do VOD… (só esse pedaço, com a sobra)", _fmt_t(a), _fmt_t(b))
     return {"ok": True, "dur": b - a}
 
