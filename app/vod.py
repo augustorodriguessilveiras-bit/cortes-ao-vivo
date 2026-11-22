@@ -210,6 +210,8 @@ def _process(vod_id):
         hh, mm, ss = t // 3600, t % 3600 // 60, t % 60
         clip_name = f"{name}_vod{vod_id}_{hh:02d}h{mm:02d}m{ss:02d}s"
         h, vpath, thumb = clip_paths(f"vod{vod_id}", clip_name)
+        if db.query("SELECT id FROM clips WHERE vod_id=? AND file_h=?", (vod_id, rel(h))):
+            continue                     # já feito antes do programa fechar: não repete
         args = []
         for a, u in inputs:  # busca direto no servidor: baixa só esse pedaço
             args += [*a, "-ss", f"{start:.2f}", "-i", u]
