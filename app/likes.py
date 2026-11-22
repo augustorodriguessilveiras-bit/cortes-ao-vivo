@@ -37,6 +37,39 @@ GENERIC |= {"gta", "jogo", "jogar", "jogando", "live", "stream", "video", "víde
             "kkkk", "kkkkk", "haha", "gente", "pessoal", "obrigado", "valeu", "seguir", "inscreve"}
 
 
+# Só coisas DO JOGO viram "assunto" (lugar, veículo, bicho, missão, situação). Palavras soltas como "favor",
+# "querendo", "fora" nunca entram.
+GAME = """
+assalto aviao banco barco bike bomba bug cachorro caminhao carro corrida explosao grau heli helicoptero hospital
+jacare jason lancha loja lucia moto npc policia ponte posto praia prisao rampa swat tiro tiroteio trem tubarao urso
+viatura aeroporto aviao jatinho paraquedas paraquedista pulo salto queda cachoeira lago rio mar oceano ilha pantano
+mangue floresta montanha deserto fazenda cidade vice city leonida miami keys port gellhorn ambrosia grassrivers
+mount kalaga praia vice beach shopping mercado mercadinho lanchonete restaurante bar boate balada clube posto
+gasolina hotel cassino estadio academia igreja delegacia cadeia presidio penitenciaria hospital farmacia oficina
+garagem estacionamento predio cobertura mansao casa favela trailer porto navio iate jetski submarino tanque
+onibus taxi ambulancia bombeiro caminhao guincho limousine quadriciclo trator tratorzinho skate bicicleta patinete
+perseguicao fuga roubo furto sequestro refem tiroteio troca tiro emboscada racha corrida drift manobra grau
+acidente batida capotou capotar explodiu explosao incendio fogo tornado furacao tempestade chuva raio enchente
+missao missoes golpe heist cofre joalheria loja roupa tatuagem barbearia salao cabelo academia pesca pescar caca
+cacar crocodilo jacare tubarao cobra urso puma onca flamingo passaro gaivota cavalo vaca porco galinha peixe golfinho
+baleia arma fuzil pistola sniper metralhadora granada faca bazuca rpg colete dinheiro grana cofre maleta droga
+procurado estrela estrelas wanted swat fbi exercito militar helicoptero drone
+""".split()
+GAME_SET = {_norm(w) for w in GAME}
+GAME_PHRASES = {"vice city", "port gellhorn", "grassrivers", "mount kalaga", "vice beach", "loja roupa",
+                "troca tiro", "jet ski"}
+
+
+def _game_terms(text):
+    """Coisas do jogo que aparecem no texto (palavras da lista e algumas expressões de duas palavras)."""
+    ws = _norm(text).split()
+    out = {w for w in ws if w in GAME_SET}
+    out |= {f"{a} {b}" for a, b in zip(ws, ws[1:]) if f"{a} {b}" in GAME_PHRASES}
+    for ph in [t for t in out if " " in t]:          # "vice city" já diz tudo: tira "vice" e "city" sozinhos
+        out -= set(ph.split())
+    return out
+
+
 def _words(text):
     return [w for w in _norm(text).split() if len(w) >= 4 and w not in STOP and not w.isdigit() and not w.startswith("kk")]
 
@@ -55,9 +88,7 @@ def _names():
 
 
 def _terms_of(text, names):
-    ws = [w for w in _words(text) if w not in names and w not in GENERIC]
-    bi = [f"{a} {b}" for a, b in zip(ws, ws[1:])]
-    return set(ws) | set(bi)
+    return {t for t in _game_terms(text) if t not in names}
 
 
 def _pretty(texts):
@@ -116,7 +147,7 @@ def rebuild():
             bad.pop(t)
     pretty = _pretty(lk + dk)
     show = {t: " ".join(pretty.get(w, w) for w in t.split()) for t in list(terms) + list(bad)}
-    data = {"terms": terms, "bad": bad, "show": show, "blocked": blocked, "n": len(lk), "n_bad": len(dk)}
+    data = {"terms": terms, "bad": bad, "show": show, "blocked": blocked, "n": len(lk), "n_bad": len(dk), "v": VERSION}
     with _lock:
         _cache.update(data)
     try:
@@ -126,12 +157,17 @@ def rebuild():
     return data
 
 
+VERSION = 2
+
+
 def load():
     with _lock:
         if _cache["terms"] or _cache["bad"] or _cache["blocked"] or _cache["n"] or _cache["n_bad"]:
             return dict(_cache)
     try:
         d = json.loads(PATH.read_text(encoding="utf-8"))
+        if d.get("v") != VERSION:              # versão antiga (pegava qualquer palavra): começa limpo
+            d = {"terms": {}, "bad": {}, "blocked": [], "n": 0, "n_bad": 0}
         with _lock:
             _cache.update(d)
         return d

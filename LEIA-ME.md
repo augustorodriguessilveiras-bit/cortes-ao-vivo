@@ -124,8 +124,9 @@ Instale nos dois PCs do mesmo jeito: Python, extrair o zip e `INICIAR.bat`.
 - **Fala:** o programa ouve o que o streamer fala o tempo todo. Reação ("meu deus", "que isso"), descoberta
   ("nunca vi isso"), bug ("bugou", "atravessou") e risada viram corte mesmo sem grito. Precisa do reconhecimento
   de fala instalado. Dá pra desligar em Ajustes.
-- **⭐ O que você curte:** o programa aprende os assuntos (missão, lugar, situação) dos cortes que você aprova/posta.
-  Quando qualquer streamer falar desses assuntos, o momento ganha nota extra. Dá pra tirar um assunto no painel.
+- **⭐ / 👎 Aprende com você:** o programa vê quais coisas do jogo (lugar, veículo, bicho, missão, situação) aparecem
+  nos cortes que você aprova e nos que você exclui. Quando qualquer streamer passar por elas, o momento ganha (ou
+  perde) nota. Funciona sozinho; o motivo aparece no cartão do corte.
 - **Intervalo mínimo entre cortes** (Ajustes, padrão 40s): quanto menor, mais cortes seguidos.
 - O cartão da live mostra quantos momentos foram achados, quantos viraram corte e se o chat e a fala estão ativos.
 
