@@ -49,6 +49,22 @@ def transcribe(path):
     return None if r is None else r[0]
 
 
+def load_audio(path):
+    """
+    Lê o áudio com o ffmpeg (mono, 16 kHz) e entrega pronto pro reconhecimento de fala.
+    O faster-whisper 1.2.1 lê o áudio com a peça "av", e a versão nova dela (19) não aceita mais o jeito que ele usa
+    (erro "open() got an unexpected keyword argument 'metadata_errors'"). Lendo aqui, isso não importa mais.
+    """
+    import subprocess
+    import numpy as np
+    from .render import NO_WINDOW
+    r = subprocess.run(["ffmpeg", "-v", "error", "-i", str(path), "-vn", "-ac", "1", "-ar", "16000", "-f", "f32le", "-"],
+                       capture_output=True, creationflags=NO_WINDOW, timeout=600)
+    if r.returncode != 0:
+        raise RuntimeError("ffmpeg não conseguiu ler o áudio: " + r.stderr.decode("utf-8", "ignore")[:150])
+    return np.frombuffer(r.stdout, np.float32).copy()
+
+
 def transcribe_words(path):
     """Igual ao transcribe, mas também com o tempo de cada palavra: (frases, [(inicio, fim, palavra)]) ou None."""
     global _model, _failed
@@ -60,7 +76,10 @@ def transcribe_words(path):
                 from faster_whisper import WhisperModel
                 log.info("🗣 Preparando o reconhecimento de fala (na 1ª vez baixa ~150 MB, pode demorar uns minutos)…")
                 _model = WhisperModel(MODEL, device="cpu", compute_type="int8")
-            segs, _ = _model.transcribe(str(path), language="pt", vad_filter=True, beam_size=1,
+            audio = load_audio(path)
+            if len(audio) < 1600:                       # menos de 0,1 s: nada pra ouvir
+                return [], []
+            segs, _ = _model.transcribe(audio, language="pt", vad_filter=True, beam_size=1,
                                         condition_on_previous_text=False, word_timestamps=True)
             lines, words = [], []
             for s in segs:
