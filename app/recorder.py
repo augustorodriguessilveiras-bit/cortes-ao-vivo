@@ -212,6 +212,7 @@ class ChannelWorker(threading.Thread):
         self.history = deque(maxlen=300)
         self.quality = ""
         self.theme, self._theme_at = "gta", 0.0
+        self.foot_until = 0.0            # a fala mostrou que ele está vendo futebol (até esse horário)
         self._stop = threading.Event()
         self._lock = threading.Lock()
         self._procs = []
@@ -386,6 +387,9 @@ class ChannelWorker(threading.Thread):
         try:
             info = info or sources.resolve(self.url, "worst")
             new = sources.guess_theme(info)
+            self._title_theme = new
+            if time.time() < self.foot_until:      # a fala diz que ele está vendo jogo agora: fica no futebol
+                new = "futebol"
             if new != self.theme:
                 log.info("🎮 %s: tema da live agora é %s", self.name,
                          {"gta": "GTA", "futebol": "futebol (reagindo a jogo) ⚽"}.get(new, "react/outros"))
@@ -469,12 +473,29 @@ class ChannelWorker(threading.Thread):
                         self._speech_hit(sec, sc, text)
                 self.speech_until = start + self.SPEECH_WIN
                 self.speech_lag = max(0.0, time.time() - self.speech_until)
+                self._foot_check()
             except Exception:
                 log.debug("falha ao ouvir a fala", exc_info=True)
                 self.speech_until = start + self.SPEECH_WIN
             finally:
                 safe_unlink(wav)
                 safe_unlink(lst)
+
+    def _foot_check(self):
+        """Pela fala dos últimos minutos: ele está assistindo futebol? (mesmo com a live com título de GTA)"""
+        from .meta import TEAMS
+        recent = [t for s, e, t in list(self.speech_lines) if s >= self.speech_until - 240]
+        text = " " + " ".join(quality._norm(t) for t in recent) + " "
+        hits = len(quality.foot_hits(text)) + sum(text.count(f" {k} ") for k in TEAMS)
+        if hits >= 5:
+            if self.theme != "futebol":
+                log.info("⚽ %s: pela fala, ele está assistindo futebol. Os cortes agora saem no modo futebol.", self.name)
+            self.theme = "futebol"
+            self.foot_until = time.time() + 600            # fica no futebol até 10 min depois do último lance falado
+        elif self.theme == "futebol" and self.foot_until and time.time() > self.foot_until:
+            self.foot_until = 0.0
+            self.theme = getattr(self, "_title_theme", "gta")
+            log.info("🎮 %s: parou de falar de futebol; voltando pro tema da live.", self.name)
 
     def _cfg(self):
         """Ajustes com a janela do tema da live (futebol = cortes mais longos)."""
