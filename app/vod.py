@@ -375,7 +375,7 @@ def _process(vod_id):
             args += [*a, "-ss", f"{start:.2f}", "-i", u]
         maps = ["-map", "0:v:0", "-map", f"{1 if len(inputs) > 1 else 0}:a:0?"]
         render.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", *args, "-t", f"{dur:.2f}", *maps,
-                    *render.venc(), *render.AENC, "-movflags", "+faststart", str(h)], timeout=1800)
+                    *render.venc("master"), *render.AENC, "-movflags", "+faststart", str(h)], timeout=1800)
         prev = db.query("SELECT title, overlay FROM clips WHERE channel_name=? ORDER BY created_at DESC LIMIT 60", (name,))
         ce = cs + cfg["before"] + cfg["after"]
         lines, speech, words = listen(h, cs, ce)   # o que o streamer falou (com o tempo de cada palavra)

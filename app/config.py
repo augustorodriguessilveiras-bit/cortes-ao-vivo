@@ -22,7 +22,7 @@ CLIPS_DIR = DATA_DIR / "cortes"
 DB_PATH = DATA_DIR / "banco.sqlite3"
 
 # Quantos minutos de cada live ficam guardados (o resto é apagado sozinho)
-BUFFER_MINUTES = _int("BUFFER_MINUTES", 20)
+BUFFER_MINUTES = _int("BUFFER_MINUTES", 10)   # quanto da live fica guardado (o corte só precisa dos últimos ~5 min)
 # Tamanho de cada pedaço de gravação
 SEGMENT_SECONDS = _int("SEGMENT_SECONDS", 10)
 # Segundos antes/depois do pico que entram no corte

@@ -59,11 +59,31 @@ def encoder():
         return _enc
 
 
-def venc():
-    return [*encoder()[1], "-pix_fmt", "yuv420p"]
+# Qualidade: o vídeo final (o que você posta) fica com qualidade alta; o "original" guardado pra editar
+# (com a sobra antes e depois) usa um pouco mais de compressão: ocupa bem menos e a diferença não aparece.
+MASTER_Q = {"NVIDIA": ["-cq", "24", "-preset", "p4"], "Intel": ["-global_quality", "24"],
+            "AMD": ["-qp_i", "23", "-qp_p", "25"], "processador": ["-crf", "23"]}
+FINAL_Q = {"NVIDIA": ["-cq", "21"], "Intel": ["-global_quality", "22"], "AMD": ["-qp_i", "21", "-qp_p", "23"],
+           "processador": ["-crf", "21"]}
 
 
-AENC = ["-c:a", "aac", "-b:a", "192k"]
+def _with(args, over):
+    out = list(args)
+    for i in range(0, len(over), 2):
+        if over[i] in out:
+            out[out.index(over[i]) + 1] = over[i + 1]
+        else:
+            out += over[i:i + 2]
+    return out
+
+
+def venc(kind="final"):
+    name, args = encoder()
+    args = _with(args, (MASTER_Q if kind == "master" else FINAL_Q).get(name, []))
+    return [*args, "-pix_fmt", "yuv420p"]
+
+
+AENC = ["-c:a", "aac", "-b:a", "160k"]
 
 
 # ------------------------------------------------------------ volume do áudio
@@ -471,7 +491,7 @@ def make_horizontal(inputs, out, offset, dur):
     """
     seek = ["-ss", f"{offset:.2f}"] if offset else []
     run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", *inputs, *seek, "-t", f"{dur:.2f}",
-         "-map", "0:v:0", "-map", "0:a:0?", *venc(), *AENC, "-movflags", "+faststart", str(out)], timeout=1800)
+         "-map", "0:v:0", "-map", "0:a:0?", *venc("master"), *AENC, "-movflags", "+faststart", str(out)], timeout=1800)
 
 
 def second_levels(src, ts=0.0, dur=None):

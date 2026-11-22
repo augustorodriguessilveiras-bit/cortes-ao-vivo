@@ -255,6 +255,11 @@ details.meta[open] summary{margin-bottom:6px}
       <button class="small" data-clean="lixo">Apagar arquivos esquecidos (sobras e temporários)</button>
       <button class="small" id="stRefresh">↻ Atualizar</button>
     </div>
+    <div class="settings" style="padding:0;border:0;background:none">
+      <label>Apagar sozinho cortes novos que eu não olhei depois de <input type="range" id="auto_clean_days" min="0" max="30" step="1"><output></output></label>
+      <label>Espaço máximo dos cortes <input type="range" id="max_gb" min="0" max="300" step="5"><output></output></label>
+    </div>
+    <div class="muted" style="font-size:12px">A limpeza automática roda sozinha a cada 30 minutos. <b style="color:var(--text)">Cortes aprovados nunca são apagados sozinhos.</b> Passando do espaço máximo, apaga primeiro os cortes novos mais antigos (e os vídeos dos já postados).</div>
   </div>
 
   <h2>📈 O que dá mais view</h2>
@@ -624,8 +629,8 @@ async function flushSettings(){
 window.addEventListener("beforeunload", () => { if (Object.keys(pendingSet).length) navigator.sendBeacon?.("/api/settings", new Blob([JSON.stringify(pendingSet)], { type: "application/json" })); });
 function bindSettings(){
   if (settingsBound) return; settingsBound = true;
-  const fmt = { gap: v => `${v}s`, live_speech: v => v, vod_listen_all: v => v, vod_parallel: v => (+v === 1 ? "1 (um de cada vez)" : +v === 3 ? "3 (só se o PC for forte)" : `${v}`) + (+v > 1 ? " · com live gravando: 1" : ""), pad: v => +v === 0 ? "nenhuma" : `${v}s antes e ${v}s depois`, style: v => v, min_score: v => (+v).toFixed(1), discard_below: v => +v === 0 ? "nunca" : (+v).toFixed(1), dur: v => `${v}s (${Math.round(v * 2 / 3)}s antes do momento, ${v - Math.round(v * 2 / 3)}s depois)`, vod_max: v => v, ov_secs: v => +v > 40 ? "o vídeo todo" : v + "s" };
-  for (const id of ["min_score", "discard_below", "dur", "vod_max", "ov_secs", "ov_on", "tags", "audio_mode", "posted_cleanup", "pad", "style", "vod_parallel", "gap", "live_speech", "vod_listen_all"]){
+  const fmt = { auto_clean_days: v => +v === 0 ? "nunca" : `${v} dia${+v > 1 ? "s" : ""}`, max_gb: v => +v === 0 ? "sem limite" : `${v} GB`, gap: v => `${v}s`, live_speech: v => v, vod_listen_all: v => v, vod_parallel: v => (+v === 1 ? "1 (um de cada vez)" : +v === 3 ? "3 (só se o PC for forte)" : `${v}`) + (+v > 1 ? " · com live gravando: 1" : ""), pad: v => +v === 0 ? "nenhuma" : `${v}s antes e ${v}s depois`, style: v => v, min_score: v => (+v).toFixed(1), discard_below: v => +v === 0 ? "nunca" : (+v).toFixed(1), dur: v => `${v}s (${Math.round(v * 2 / 3)}s antes do momento, ${v - Math.round(v * 2 / 3)}s depois)`, vod_max: v => v, ov_secs: v => +v > 40 ? "o vídeo todo" : v + "s" };
+  for (const id of ["min_score", "discard_below", "dur", "vod_max", "ov_secs", "ov_on", "tags", "audio_mode", "posted_cleanup", "pad", "style", "vod_parallel", "gap", "live_speech", "vod_listen_all", "auto_clean_days", "max_gb"]){
     const el = $("#" + id), out = el.parentElement.querySelector("output"), val = ST.settings[id];
     if (el.type === "checkbox") el.checked = !!val; else el.value = val;
     if (out) out.textContent = fmt[id](val);

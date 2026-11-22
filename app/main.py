@@ -76,6 +76,7 @@ async def lifespan(app):
         plog.debug("backfill do aprendizado falhou", exc_info=True)
     for ch in db.query("SELECT * FROM channels"):
         start_worker(ch)
+    threading.Thread(target=_auto_cleanup_loop, daemon=True).start()   # não deixa o disco encher
     vod.live_count = lambda: sum(1 for w in workers.values() if w.status == "gravando")
     vod.start()
     version.start_check()
@@ -843,7 +844,7 @@ def _process_vodclip(url, a, b, theme_in, count=1):
             args += [*ar, "-ss", f"{start:.2f}", "-i", u]
         maps = ["-map", "0:v:0", "-map", f"{1 if len(inputs) > 1 else 0}:a:0?"]
         render.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", *args, "-t", f"{end - start:.2f}", *maps,
-                    *render.venc(), *render.AENC, "-movflags", "+faststart", str(h)], timeout=3600)
+                    *render.venc("master"), *render.AENC, "-movflags", "+faststart", str(h)], timeout=3600)
         _, _, hdur = render.probe(h)
         if hdur < 2:
             raise RuntimeError("o pedaço baixado veio vazio")
@@ -1071,6 +1072,84 @@ class CleanupIn(BaseModel):
     days: int = 3
 
 
+# ------------------------------------------------------------ limpeza automática (pra não encher o disco)
+def _bytes(c):
+    n = 0
+    for f in _clip_files(c):
+        try:
+            if f.exists():
+                n += f.stat().st_size
+        except OSError:
+            pass
+    return n
+
+
+def auto_cleanup():
+    """
+    Roda sozinha de tempos em tempos:
+      - horizontal pra baixar com mais de 1 dia: apaga (é refeito na hora se você clicar em ⬇ Horizontal de novo)
+      - cortes NOVOS (não olhados) com mais de X dias: apaga
+      - passou do espaço máximo: apaga os cortes novos mais antigos até caber (aprovados nunca são apagados sozinhos)
+      - sobras e temporários esquecidos
+    """
+    cfg = settings.get_all()
+    freed, n = 0, 0
+    old = time.time() - 86400
+    for c in db.query("SELECT id, file_hw FROM clips WHERE file_hw IS NOT NULL"):
+        f = C.CLIPS_DIR / c["file_hw"]
+        try:
+            if f.exists() and f.stat().st_mtime < old:
+                freed += f.stat().st_size
+                f.unlink()
+                db.update("clips", c["id"], {"file_hw": None})
+        except OSError:
+            pass
+    days = int(cfg.get("auto_clean_days") or 0)
+    if days > 0:
+        for c in db.query("SELECT * FROM clips WHERE status='pendente' AND rendering=0 AND posted_on IS NULL AND created_at < ?",
+                          (time.time() - days * 86400,)):
+            freed += _free_files(c)
+            db.execute("DELETE FROM clips WHERE id=?", (c["id"],))
+            n += 1
+    max_b = float(cfg.get("max_gb") or 0) * 1e9
+    if max_b > 0:
+        rows = db.query("SELECT * FROM clips WHERE COALESCE(files_deleted,0)=0 ORDER BY created_at")
+        total = sum(_bytes(c) for c in rows)
+        for c in rows:                         # os mais antigos primeiro; só novos (não olhados) e já postados
+            if total <= max_b:
+                break
+            if c["status"] == "aprovado" or c.get("rendering"):
+                continue
+            b = _free_files(c, keep_thumb=c["status"] == "postado")
+            total -= b
+            freed += b
+            if c["status"] == "postado":
+                db.update("clips", c["id"], {"files_deleted": 1})
+            else:
+                db.execute("DELETE FROM clips WHERE id=?", (c["id"],))
+                n += 1
+        if total > max_b:
+            plog.warning("⚠ Os cortes aprovados já passam do espaço máximo (%.0f GB). Poste ou exclua alguns, "
+                         "ou aumente o limite em 🧹 Espaço no computador.", total / 1e9)
+    try:
+        r = cleanup(CleanupIn(what="lixo"))
+        freed += float(r.get("freed_mb", 0)) * 1e6
+    except Exception:
+        pass
+    if n or freed > 50e6:
+        plog.info("🧹 Limpeza automática: %d cortes antigos não olhados apagados, %.1f GB liberados.", n, freed / 1e9)
+
+
+def _auto_cleanup_loop():
+    time.sleep(120)
+    while True:
+        try:
+            auto_cleanup()
+        except Exception:
+            plog.debug("limpeza automática falhou", exc_info=True)
+        time.sleep(30 * 60)
+
+
 @app.post("/api/cleanup")
 def cleanup(body: CleanupIn):
     """Libera espaço: vídeos dos postados, novos não aprovados antigos ou arquivos esquecidos."""
@@ -1121,7 +1200,8 @@ def cleanup(body: CleanupIn):
                         pass
     else:
         raise HTTPException(400, "Opção de limpeza desconhecida")
-    plog.info("🧹 Limpeza: %s MB liberados (%d item(ns))", round(freed / 1e6), n)
+    if freed or n:
+        plog.info("🧹 Limpeza: %s MB liberados (%d item(ns))", round(freed / 1e6), n)
     return {"freed_mb": round(freed / 1e6, 1), "items": n}
 
 
