@@ -18,7 +18,7 @@ PATH = C.DATA_DIR / "curtidos.json"
 MIN_CLIPS = 3                 # precisa de pelo menos 3 cortes aprovados com a fala ouvida
 MAX_TERMS = 40
 _lock = threading.Lock()
-_cache = {"terms": {}, "blocked": [], "n": 0}
+_cache = {"terms": {}, "bad": {}, "blocked": [], "n": 0, "n_bad": 0}
 
 STOP = set("""
 a o e é as os um uma uns umas de do da dos das no na nos nas em pra pro pras pros para por pelo pela com sem que
@@ -69,37 +69,54 @@ def _pretty(texts):
     return out
 
 
+def _side(good, bad, names, blocked):
+    """Assuntos que aparecem bem mais em 'good' do que em 'bad'."""
+    terms = {}
+    if len(good) < MIN_CLIPS:
+        return terms
+    gk = Counter(t for tx in good for t in _terms_of(tx, names))
+    bk = Counter(t for tx in bad for t in _terms_of(tx, names))
+    ng, nb = len(good), max(1, len(bad))
+    for t, n in gk.items():
+        if n < 2 or t in blocked:
+            continue
+        share_g, share_b = n / ng, bk.get(t, 0) / nb
+        if share_g < 0.12 or share_g < share_b * 1.5:
+            continue
+        terms[t] = round(share_g * math.log(1 + n) * (1.3 if " " in t else 1.0), 3)
+    # se a dupla de palavras já está, a palavra sozinha só fica se aparecer bem mais
+    for t in [t for t in terms if " " in t]:
+        for w in t.split():
+            if w in terms and gk[w] <= gk[t] + 1:
+                terms.pop(w, None)
+    return dict(sorted(terms.items(), key=lambda kv: -kv[1])[:MAX_TERMS])
+
+
 def rebuild():
-    """Recalcula os assuntos curtidos (chamado ao aprovar/postar e ao abrir o programa)."""
+    """Recalcula os assuntos que você curte e os que você costuma descartar (ao aprovar/postar/excluir e ao abrir)."""
     names = _names()
-    liked = [r["transcript"] for r in db.query(
-        "SELECT transcript FROM clips WHERE (status IN ('aprovado','postado') OR posted_on IS NOT NULL) "
-        "AND transcript IS NOT NULL AND transcript<>''")]
-    others = [r["transcript"] for r in db.query(
+    liked = {r["id"]: r["transcript"] for r in db.query(
+        "SELECT id, transcript FROM clips WHERE (status IN ('aprovado','postado') OR posted_on IS NOT NULL) "
+        "AND transcript IS NOT NULL AND transcript<>''")}
+    disliked = {}
+    for r in db.query("SELECT clip_id, label, text FROM feedback WHERE text IS NOT NULL AND text<>''"):
+        (liked if r["label"] else disliked).setdefault(r["clip_id"], r["text"])
+    for k in list(disliked):
+        if k in liked:                            # aprovou depois: vale o aprovado
+            disliked.pop(k)
+    pending = [r["transcript"] for r in db.query(
         "SELECT transcript FROM clips WHERE status NOT IN ('aprovado','postado') AND posted_on IS NULL "
         "AND transcript IS NOT NULL AND transcript<>''")]
     blocked = load().get("blocked", [])
-    terms = {}
-    if len(liked) >= MIN_CLIPS:
-        lk = Counter(t for tx in liked for t in _terms_of(tx, names))
-        ot = Counter(t for tx in others for t in _terms_of(tx, names))
-        nl, no = len(liked), max(1, len(others))
-        for t, n in lk.items():
-            if n < 2 or t in blocked:
-                continue
-            share_l, share_o = n / nl, ot.get(t, 0) / no
-            if share_l < 0.12 or share_l < share_o * 1.5:      # tem que aparecer bem mais nos que você curtiu
-                continue
-            terms[t] = round(share_l * math.log(1 + n) * (1.3 if " " in t else 1.0), 3)
-        # se a dupla de palavras já está, a palavra sozinha só fica se aparecer bem mais
-        for t in [t for t in terms if " " in t]:
-            for w in t.split():
-                if w in terms and lk[w] <= lk[t] + 1:
-                    terms.pop(w, None)
-        terms = dict(sorted(terms.items(), key=lambda kv: -kv[1])[:MAX_TERMS])
-    pretty = _pretty(liked)
-    show = {t: " ".join(pretty.get(w, w) for w in t.split()) for t in terms}
-    data = {"terms": terms, "show": show, "blocked": blocked, "n": len(liked)}
+    lk, dk = list(liked.values()), list(disliked.values())
+    terms = _side(lk, dk + pending, names, blocked)
+    bad = _side(dk, lk, names, blocked)
+    for t in list(bad):
+        if t in terms:
+            bad.pop(t)
+    pretty = _pretty(lk + dk)
+    show = {t: " ".join(pretty.get(w, w) for w in t.split()) for t in list(terms) + list(bad)}
+    data = {"terms": terms, "bad": bad, "show": show, "blocked": blocked, "n": len(lk), "n_bad": len(dk)}
     with _lock:
         _cache.update(data)
     try:
@@ -111,7 +128,7 @@ def rebuild():
 
 def load():
     with _lock:
-        if _cache["terms"] or _cache["blocked"] or _cache["n"]:
+        if _cache["terms"] or _cache["bad"] or _cache["blocked"] or _cache["n"] or _cache["n_bad"]:
             return dict(_cache)
     try:
         d = json.loads(PATH.read_text(encoding="utf-8"))
@@ -141,12 +158,17 @@ def unblock_all():
     return rebuild()
 
 
-def match(text):
+def match(text, key="terms"):
     """Assuntos curtidos que aparecem nesse texto (os mais fortes primeiro)."""
-    terms = load().get("terms") or {}
+    terms = load().get(key) or {}
     if not terms or not text:
         return []
-    t = " " + _norm(text) + " "
-    found = [k for k in terms if f" {k} " in t]
+    have = _terms_of(text, set())                 # mesmo jeito de quando aprende ("loja de roupa" -> "loja roupa")
+    found = [k for k in terms if k in have]
     found = [k for k in found if not any(k != o and k in o.split() for o in found)]   # "jacare" some se tem "jacare gigante"
     return sorted(found, key=lambda k: -terms[k])
+
+
+def match_bad(text):
+    """Assuntos que você costuma descartar que aparecem nesse texto."""
+    return match(text, "bad")

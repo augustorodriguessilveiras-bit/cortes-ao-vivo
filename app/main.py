@@ -354,7 +354,9 @@ def set_posted(clip_id: int, body: PostedIn):
 def likes_get():
     d = likes.load()
     show = d.get("show") or {}
-    return {"terms": [{"t": t, "show": show.get(t, t)} for t in (d.get("terms") or {})], "blocked": d.get("blocked", []), "n": d.get("n", 0),
+    return {"terms": [{"t": t, "show": show.get(t, t)} for t in (d.get("terms") or {})],
+            "bad": [{"t": t, "show": show.get(t, t)} for t in (d.get("bad") or {})], "n_bad": d.get("n_bad", 0),
+            "blocked": d.get("blocked", []), "n": d.get("n", 0),
             "min": likes.MIN_CLIPS}
 
 
@@ -1050,7 +1052,7 @@ def cleanup(body: CleanupIn):
     elif body.what == "novos_antigos":
         limit = time.time() - body.days * 86400
         for c in db.query("SELECT * FROM clips WHERE status='pendente' AND created_at < ? AND rendering=0", (limit,)):
-            quality.record(c["id"], c.get("features"), 0)
+            # (não conta como "descartado": você nem chegou a olhar esses)
             freed += _free_files(c)
             db.execute("DELETE FROM clips WHERE id=?", (c["id"],))
             n += 1

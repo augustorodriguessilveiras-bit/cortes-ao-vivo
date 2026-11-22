@@ -31,7 +31,7 @@ FUNNY = ["kkk", "haha", "hehe", "rsrs", "risos", "zoeira", "que vergonha", "ridi
 
 WIN_BEFORE, WIN_AFTER = 10.0, 12.0     # janela ao redor do momento forte (segundos)
 MODEL_PATH = C.DATA_DIR / "aprendizado.json"
-FEATS = ["sinal", "fala", "reacao", "descoberta", "engracado", "sem_fala", "bug", "nao_ouviu", "curtido"]
+FEATS = ["sinal", "fala", "reacao", "descoberta", "engracado", "sem_fala", "bug", "nao_ouviu", "curtido", "descartado"]
 
 
 def _liked(text):
@@ -41,9 +41,23 @@ def _liked(text):
     except Exception:
         return []
 
+
+def _disliked(text):
+    try:
+        from . import likes
+        return likes.match_bad(text)
+    except Exception:
+        return []
+
 with db._lock:
     db._conn.execute("CREATE TABLE IF NOT EXISTS feedback (id INTEGER PRIMARY KEY AUTOINCREMENT, "
                      "clip_id INTEGER, features TEXT, label INTEGER, at REAL)")
+    _have = {r[1] for r in db._conn.execute("PRAGMA table_info(feedback)")}
+    for _col in ("text", "channel"):            # o que foi falado no corte: fica guardado mesmo depois de excluir
+        if _col not in _have:
+            db._conn.execute(f"ALTER TABLE feedback ADD COLUMN {_col} TEXT")
+    db._conn.execute("UPDATE feedback SET text=(SELECT transcript FROM clips WHERE clips.id=feedback.clip_id), "
+                     "channel=(SELECT channel_name FROM clips WHERE clips.id=feedback.clip_id) WHERE text IS NULL")
     db._conn.commit()
 
 
@@ -86,6 +100,7 @@ def evaluate(signal, speech, peak_rel, dur=None):
     react, disc, fun = _hits(text, REACTION), _hits(text, DISCOVERY), _hits(whole, FUNNY)
     bug = _hits(text, BUG)
     liked = _liked(text)            # assuntos parecidos com os cortes que você aprovou
+    bad = _disliked(text)           # assuntos parecidos com os cortes que você descartou
     excl = sum(t.count("!") + t.count("?") for _, _, t in near)
     reasons = []
     if not near:
@@ -93,8 +108,8 @@ def evaluate(signal, speech, peak_rel, dur=None):
         reasons.append("🔇 ninguém falou perto do momento (pode ser só barulho do jogo)")
     else:
         content = 2.0 + min(2.0, ratio * 3) + min(5.0, len(react) * 1.8) + min(4.0, len(disc) * 1.8) \
-            + min(4.5, len(bug) * 2.2) + min(4.0, len(fun) * 1.6) + min(0.8, excl * 0.2) + min(3.0, len(liked) * 1.6)
-        content = min(10.0, content)
+            + min(4.5, len(bug) * 2.2) + min(4.0, len(fun) * 1.6) + min(0.8, excl * 0.2) + min(3.0, len(liked) * 1.6) - min(3.0, len(bad) * 1.5)
+        content = max(0.0, min(10.0, content))
         quote = max(near, key=lambda x: len(_hits(_norm(x[2]), REACTION + DISCOVERY + FUNNY + BUG)) * 10 + min(len(x[2]), 60))[2]
         if bug:
             reasons.append(f"🐞 bug no jogo: “{quote.strip()[:60]}”")
@@ -112,9 +127,11 @@ def evaluate(signal, speech, peak_rel, dur=None):
             reasons.append(f"🎙 falando: “{quote.strip()[:60]}”")
         if liked:
             reasons.append("⭐ parecido com cortes que você aprovou: " + ", ".join(liked[:3]))
+        if bad:
+            reasons.append("👎 parecido com cortes que você descartou: " + ", ".join(bad[:3]))
     feats = {"sinal": signal / 10, "fala": ratio, "reacao": min(3, len(react)) / 3, "descoberta": min(3, len(disc)) / 3,
              "engracado": min(3, len(fun)) / 3, "sem_fala": 0.0 if near else 1.0, "bug": min(2, len(bug)) / 2,
-             "nao_ouviu": 0.0, "curtido": min(2, len(liked)) / 2}
+             "nao_ouviu": 0.0, "curtido": min(2, len(liked)) / 2, "descartado": min(2, len(bad)) / 2}
     final = 0.3 * signal + 0.7 * content      # o que ele fala pesa mais que o barulho
     learned = predict(feats)
     if learned is not None:
@@ -139,6 +156,7 @@ def speech_moment(text):
     found = _hits(t, REACTION) + _hits(t, DISCOVERY) + _hits(t, BUG) + _hits(t, FUNNY)
     strength = sum(0.5 if w in WEAK else 1.0 for w in dict.fromkeys(found))
     strength += min(2, len(_liked(text))) * 1.0     # assunto que você curte (de cortes que você aprovou)
+    strength -= min(2, len(_disliked(text))) * 0.75  # assunto que você costuma descartar
     if strength < 1:
         return 0.0
     excl = (text or "").count("!") + (text or "").count("?")
@@ -155,8 +173,16 @@ def record(clip_id, features_json, label):
         return
     if db.query("SELECT id FROM feedback WHERE clip_id=?", (clip_id,)):
         return
-    db.insert("feedback", {"clip_id": clip_id, "features": features_json, "label": int(label), "at": time.time()})
+    c = db.query("SELECT transcript, channel_name FROM clips WHERE id=?", (clip_id,))
+    db.insert("feedback", {"clip_id": clip_id, "features": features_json, "label": int(label), "at": time.time(),
+                           "text": c[0]["transcript"] if c else None, "channel": c[0]["channel_name"] if c else None})
     train()
+    if int(label) == 0:
+        try:
+            from . import likes
+            likes.rebuild()                 # assuntos que você costuma descartar
+        except Exception:
+            pass
 
 
 def total_views(views_json):

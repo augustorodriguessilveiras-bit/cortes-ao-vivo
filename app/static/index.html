@@ -1209,11 +1209,14 @@ async function loadInsights(){
 async function loadLikes(){
   try {
     const d = await api("/api/likes"), box = $("#likeBox");
-    const intro = `<div class="muted">Assuntos que aparecem nos cortes que você <b style="color:var(--text)">aprovou ou postou</b> (missão, lugar, situação do jogo). Quando <b style="color:var(--text)">qualquer streamer</b> falar disso na live ou no VOD, o momento ganha nota extra e tem mais chance de virar corte. Clique no × pra tirar um assunto que não tem nada a ver.</div>`;
+    const intro = `<div class="muted">Assuntos que aparecem nos cortes que você <b style="color:var(--text)">aprovou ou postou</b> (missão, lugar, situação do jogo). Quando <b style="color:var(--text)">qualquer streamer</b> falar disso na live ou no VOD, o momento ganha nota extra e tem mais chance de virar corte. Os assuntos dos cortes que você <b style="color:var(--text)">exclui</b> fazem o contrário: perdem nota. Clique no × pra tirar um assunto que não tem nada a ver.</div>`;
     const body = d.terms.length
       ? `<div class="tagchips" style="max-height:none">${d.terms.map(x => `<span>⭐ ${esc(x.show)} <button class="small" data-unlike="${esc(x.t)}" title="Tirar esse assunto" style="padding:0 6px;margin-left:4px">×</button></span>`).join("")}</div>`
       : `<div class="muted">${d.n < d.min ? `Ainda aprendendo: precisa de ${d.min} cortes aprovados/postados <b style="color:var(--text)">com a fala ouvida</b> (você tem ${d.n}).` : "Ainda não achou assuntos que se repetem nos cortes que você aprovou."} Precisa do reconhecimento de fala funcionando.</div>`;
-    const html = intro + body + (d.blocked.length ? `<div class="muted" style="font-size:12px">Tirados por você: ${d.blocked.map(esc).join(", ")} <button class="small" id="likeReset">Trazer de volta</button></div>` : "");
+    const badHtml = d.bad && d.bad.length
+      ? `<div class="muted" style="margin-top:4px"><b style="color:var(--text)">👎 O que você costuma descartar</b> (perde nota quando aparece):</div><div class="tagchips" style="max-height:none">${d.bad.map(x => `<span>👎 ${esc(x.show)} <button class="small" data-unlike="${esc(x.t)}" title="Tirar esse assunto" style="padding:0 6px;margin-left:4px">×</button></span>`).join("")}</div>`
+      : `<div class="muted" style="font-size:12px">👎 Assuntos que você costuma descartar aparecem aqui quando você excluir ${d.min} ou mais cortes novos com a fala ouvida${d.n_bad ? ` (você tem ${d.n_bad})` : ""}.</div>`;
+    const html = intro + body + badHtml + (d.blocked.length ? `<div class="muted" style="font-size:12px">Tirados por você: ${d.blocked.map(esc).join(", ")} <button class="small" id="likeReset">Trazer de volta</button></div>` : "");
     if (box.dataset.h !== html){ box.innerHTML = html; box.dataset.h = html; }
   } catch {}
 }
