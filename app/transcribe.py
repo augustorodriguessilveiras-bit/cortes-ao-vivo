@@ -44,8 +44,9 @@ def available():
 
 
 def transcribe(path):
-    """Retorna [(inicio, fim, texto)] em segundos, [] se ninguém falou, ou None se não deu pra ouvir."""
-    r = transcribe_words(path)
+    """Retorna [(inicio, fim, texto)] em segundos, [] se ninguém falou, ou None se não deu pra ouvir.
+    (sem o tempo de cada palavra: bem mais leve, usado pra ouvir as lives e os VODs)"""
+    r = transcribe_words(path, words=False)
     return None if r is None else r[0]
 
 
@@ -65,7 +66,7 @@ def load_audio(path):
     return np.frombuffer(r.stdout, np.float32).copy()
 
 
-def transcribe_words(path):
+def transcribe_words(path, words=True):
     """Igual ao transcribe, mas também com o tempo de cada palavra: (frases, [(inicio, fim, palavra)]) ou None."""
     global _model, _failed
     if _failed or not available():
@@ -75,17 +76,20 @@ def transcribe_words(path):
             if _model is None:
                 from faster_whisper import WhisperModel
                 log.info("🗣 Preparando o reconhecimento de fala (na 1ª vez baixa ~150 MB, pode demorar uns minutos)…")
-                _model = WhisperModel(MODEL, device="cpu", compute_type="int8")
+                import os
+                threads = max(2, min(8, (os.cpu_count() or 4) // 2))   # metade do processador: sobra pro resto
+                _model = WhisperModel(MODEL, device="cpu", compute_type="int8", cpu_threads=threads)
             audio = load_audio(path)
             if len(audio) < 1600:                       # menos de 0,1 s: nada pra ouvir
                 return [], []
             segs, _ = _model.transcribe(audio, language="pt", vad_filter=True, beam_size=1,
-                                        condition_on_previous_text=False, word_timestamps=True)
+                                        condition_on_previous_text=False, word_timestamps=words)
+            want_words = words
             lines, words = [], []
             for s in segs:
                 if s.text.strip():
                     lines.append((float(s.start), float(s.end), s.text.strip()))
-                for w in (s.words or []):
+                for w in ((s.words or []) if want_words else []):
                     if w.word.strip():
                         words.append((round(float(w.start), 2), round(float(w.end), 2), w.word.strip()))
             return lines, words

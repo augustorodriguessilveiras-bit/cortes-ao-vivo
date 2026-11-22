@@ -541,11 +541,12 @@ function renderLives(){
         <div class="chips">
           <span class="chip ok">🔊 Áudio</span>
           ${c.chat ? `<span class="chip ${c.chat_status === "conectado" ? "ok" : "bad"}" title="${esc(c.chat_status || "")}">💬 Chat: ${c.chat_status === "conectado" ? "lendo" : c.chat_status === "conectando" ? "conectando…" : "sem acesso agora"}</span>` : `<span class="chip">💬 Chat: não</span>`}
-          <span class="chip ${c.speech === "ouvindo" ? "ok" : c.speech ? "bad" : ""}">${c.speech === "ouvindo" ? "🗣 Ouvindo a fala" : c.speech ? "🗣 Fala " + esc(c.speech) : "🗣 Fala: desligada"}</span>
+          <span class="chip ${c.speech === "ouvindo" ? "ok" : c.speech ? "bad" : ""}" title="${c.speech && c.speech !== "ouvindo" ? "O PC está demorando pra ouvir a fala (muita coisa ao mesmo tempo). Os cortes pelo áudio e pelo chat continuam na hora; a fala chega atrasada." : ""}">${c.speech === "ouvindo" ? "🗣 Ouvindo a fala" : c.speech ? "🗣 Fala: PC ocupado (" + esc(c.speech.replace("atrasado ", "")) + " de atraso)" : "🗣 Fala: desligada"}</span>
           <span class="chip ${c.cam ? "ok" : "bad"}">${c.cam ? "✓ Webcam marcada" : "Webcam: clique em 📷 Marcar câmera"}</span></div>
         <div class="meter"><i style="width:${(c.score || 0) * 10}%"></i></div>
         <div class="row between muted"><span>Hype agora: <b style="color:var(--text)">${c.score ?? 0}</b>/10</span><span>linha = nota mínima</span></div>
         ${spark(c.history, ST.settings.min_score)}
+        ${c.chat && c.chat_status && !["conectado", "conectando"].includes(c.chat_status) ? `<div class="muted" style="font-size:11.5px">💬 Chat: ${esc(c.chat_status)}</div>` : ""}
         ${c.stats ? `<div class="muted" style="font-size:12px">Nesta live: <b style="color:var(--text)">${c.stats.momentos}</b> momentos achados${c.stats.pela_fala ? ` (${c.stats.pela_fala} pela fala)` : ""} · <b style="color:var(--text)">${c.stats.cortes}</b> cortes${c.stats.descartados ? ` · ${c.stats.descartados} descartados pela nota` : ""}</div>` : ""}` : ""}
       <div class="actions">
         ${live ? `<button class="small primary" data-act="clip" data-id="${c.id}">✂ Cortar agora</button><button class="small" data-act="cam" data-id="${c.id}">📷 ${c.cam ? "Câmera ✓" : "Marcar câmera"}</button>` : ""}

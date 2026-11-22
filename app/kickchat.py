@@ -21,11 +21,26 @@ PUSHER_URL = f"wss://ws-us2.pusher.com/app/{PUSHER_KEY}?protocol=7&client=js&ver
 
 
 def chatroom_id(slug):
-    """Número da sala de chat do canal (a API da Kick precisa parecer um navegador de verdade)."""
+    """Número da sala de chat do canal (a API da Kick precisa parecer um navegador de verdade). Tenta vários caminhos."""
     from curl_cffi import requests
-    r = requests.get(f"https://kick.com/api/v2/channels/{slug}", impersonate="chrome", timeout=20)
-    r.raise_for_status()
-    return int(r.json()["chatroom"]["id"])
+    errors = []
+    for url in (f"https://kick.com/api/v2/channels/{slug}", f"https://kick.com/api/v2/channels/{slug}/chatroom",
+                f"https://kick.com/api/v1/channels/{slug}"):
+        for imp in ("chrome", "safari", "edge"):
+            try:
+                r = requests.get(url, impersonate=imp, timeout=20, headers={"Accept": "application/json"})
+                if r.status_code != 200:
+                    errors.append(f"{r.status_code}")
+                    continue
+                j = r.json()
+                cid = (j.get("chatroom") or {}).get("id") if isinstance(j.get("chatroom"), dict) else None
+                cid = cid or (j.get("id") if "chatroom" in url else None)
+                if cid:
+                    return int(cid)
+                errors.append("sem chatroom")
+            except Exception as e:
+                errors.append(type(e).__name__)
+    raise RuntimeError("a Kick não deixou ver o chat (" + ", ".join(dict.fromkeys(errors))[:60] + ")")
 
 
 class KickChat(threading.Thread):

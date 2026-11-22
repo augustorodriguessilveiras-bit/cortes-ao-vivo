@@ -265,7 +265,7 @@ class ChannelWorker(threading.Thread):
             "buffer_min": round(sum(d for _, _, d in self.segments) / 60, 1),
             "chat": bool(self.chat), "quality": self.quality,
             "chat_status": getattr(self.chat, "status", "conectado") if self.chat else None,
-            "speech": ("ouvindo" if self.speech_lag < 90 else f"atrasado {int(self.speech_lag)}s") if self.speech_on else None,
+            "speech": ("ouvindo" if self.speech_lag < 150 else f"atrasado {int(self.speech_lag)}s") if self.speech_on else None,
             "stats": dict(self.stats),
         }
 
@@ -460,6 +460,7 @@ class ChannelWorker(threading.Thread):
                         sec = int(start + s)
                         if sc > self.speech.get(sec, (0, ""))[0]:
                             self.speech[sec] = (sc, text)
+                        self._speech_hit(sec, sc, text)
                 self.speech_until = start + self.SPEECH_WIN
                 self.speech_lag = max(0.0, time.time() - self.speech_until)
             except Exception:
@@ -469,18 +470,31 @@ class ChannelWorker(threading.Thread):
                 safe_unlink(wav)
                 safe_unlink(lst)
 
+    def _speech_hit(self, sec, sc, text):
+        """Frase forte ouvida na live: vira corte (se não tiver outro corte perto). Não espera o áudio/chat."""
+        cfg = settings.get_all()
+        if sc < cfg["min_score"]:
+            return
+        with self._lock:
+            near = [j for j in self.jobs if abs(j["peak"] - sec) <= cfg["gap"]]
+            if abs(sec - self.last_peak) <= cfg["gap"] or near or \
+                    (self.pending and abs(self.pending["peak"] - sec) <= cfg["gap"]):
+                return
+            from . import likes
+            liked = likes.match(text)
+            tag = f"⭐ assunto que você curte ({', '.join(liked[:2])}): " if liked else "🗣 falou: "
+            self.jobs.append({"start": sec - cfg["before"], "end": sec + cfg["after"], "score": sc,
+                              "reasons": [f"{tag}“{text.strip()[:50]}”"], "peak": sec})
+            self.last_peak = max(self.last_peak, sec)
+            self.stats["momentos"] += 1
+            self.stats["pela_fala"] += 1
+        log.info("🗣 %s: falou algo forte (“%s”). Vou cortar esse momento.", self.name, text.strip()[:60])
+
     def _score_second(self, t):
         hist = [self.audio[s] for s in range(t - 600, t - 5) if s in self.audio]
         if len(hist) < 60:
             return None, []
-        base_score, reasons = self._score_signal(t, hist)
-        best = max((self.speech[s] for s in range(t, t + 3) if s in self.speech), default=None, key=lambda x: x[0])
-        if best and best[0] >= base_score:
-            from . import likes
-            liked = likes.match(best[1])
-            tag = f"⭐ assunto que você curte ({', '.join(liked[:2])}): " if liked else "🗣 falou: "
-            return best[0], reasons + [f"{tag}“{best[1].strip()[:50]}”"]
-        return base_score, reasons
+        return self._score_signal(t, hist)
 
     def _score_signal(self, t, hist):
         hist = np.array(hist)
@@ -506,9 +520,6 @@ class ChannelWorker(threading.Thread):
         limit = int(self.analyzed_until) - 3
         if self.chat:
             limit = min(limit, int(time.time()) - 18)
-        if self.speech_on and self.speech_lag < 90:
-            # espera a fala ser ouvida (se o PC estiver atrasado demais, segue só com áudio e chat)
-            limit = min(limit, int(self.speech_until) - 3) if self.speech_until else min(limit, int(self.analyzed_until) - 60)
         if not self.scored_until and self.segments:
             self.scored_until = int(self.segments[0][0])
         cfg = settings.get_all()
@@ -531,7 +542,7 @@ class ChannelWorker(threading.Thread):
 
     def _queue_pending(self):
         p, self.pending = self.pending, None
-        self.last_peak = p["peak"]
+        self.last_peak = max(self.last_peak, p["peak"])
         self.stats["momentos"] += 1
         if any(r.startswith("🗣") for r in p["reasons"]):
             self.stats["pela_fala"] += 1
