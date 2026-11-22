@@ -24,6 +24,7 @@ import json
 from . import db, meta, quality, render, rules, settings, smart, sources, transcribe
 from .procs import safe_unlink
 from .chat import TwitchChat
+from .kickchat import KickChat
 
 log = logging.getLogger("recorder")
 
@@ -227,6 +228,11 @@ class ChannelWorker(threading.Thread):
         self.last_peak = 0.0
         self.jobs = []
         self.chat = None
+        self.speech = {}                 # segundo -> (nota da fala, frase)
+        self.speech_until = 0.0          # até onde a fala já foi ouvida
+        self.speech_on = False
+        self.speech_lag = 0.0
+        self.stats = {"momentos": 0, "cortes": 0, "descartados": 0, "pela_fala": 0}
 
     def stop(self):
         self._stop.set()
@@ -258,6 +264,9 @@ class ChannelWorker(threading.Thread):
             "score": round(min(self.score, 10.0), 1), "history": list(self.history)[::5],
             "buffer_min": round(sum(d for _, _, d in self.segments) / 60, 1),
             "chat": bool(self.chat), "quality": self.quality,
+            "chat_status": getattr(self.chat, "status", "conectado") if self.chat else None,
+            "speech": ("ouvindo" if self.speech_lag < 90 else f"atrasado {int(self.speech_lag)}s") if self.speech_on else None,
+            "stats": dict(self.stats),
         }
 
     # ------------------------------------------------------------ loop principal
@@ -342,12 +351,18 @@ class ChannelWorker(threading.Thread):
         if self.platform == "twitch":
             self.chat = TwitchChat(self.name)
             self.chat.start()
+        elif self.platform == "kick":
+            self.chat = KickChat(self.name)
+            self.chat.start()
 
         self._update_theme(src if isinstance(src, dict) else None)
         self.status = "gravando"
         self.live_since = time.time()
         self.error = ""
         log.info("🔴 %s entrou ao vivo: gravando", self.name)
+        if settings.get("live_speech") and transcribe.available():
+            self.speech_on = True
+            threading.Thread(target=self._speech_loop, daemon=True).start()
         try:
             while not self._stop.is_set() and all(p.poll() is None for p in self._procs[-1:]):
                 self._tick(final=False)
@@ -407,10 +422,64 @@ class ChannelWorker(threading.Thread):
             self.segments.append((start, p, dur))
             self.analyzed_until = max(self.analyzed_until, start + dur)
 
+    # ------------------------------------------------------------ ouvir a fala da live
+    SPEECH_WIN = 30      # ouve de 30 em 30 s, com 10 s repetidos pra não cortar palavra no meio
+
+    def _speech_loop(self):
+        """Fica ouvindo o que o streamer fala. Reação/descoberta/bug/risada viram momento, mesmo sem grito."""
+        live_started = self.live_since
+        while not self._stop.is_set() and self.live_since == live_started and self.status == "gravando":
+            segs = [(s, p, d) for s, p, d in list(self.segments) if p.exists()]
+            if not segs:
+                self._stop.wait(3)
+                continue
+            end = segs[-1][0] + segs[-1][2]
+            start = max(self.speech_until - 10, segs[0][0], end - 120)    # atrasado demais: pula pro recente
+            if end - start < self.SPEECH_WIN - 10 and end - self.speech_until < 20:
+                self._stop.wait(3)
+                continue
+            use = [(s, p) for s, p, d in segs if s + d > start and s < start + self.SPEECH_WIN]
+            if not use:
+                self._stop.wait(3)
+                continue
+            wav = self.segdir / f"_fala_{int(start)}.wav"
+            lst = self.segdir / f"_fala_{int(start)}.txt"
+            try:
+                lst.write_text("".join(f"file '{Path(p).resolve().as_posix()}'\n" for _, p in use), encoding="utf-8")
+                t0 = use[0][0]
+                render.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(lst),
+                            "-ss", f"{max(0.0, start - t0):.2f}", "-t", str(self.SPEECH_WIN), "-vn", "-ac", "1", "-ar", "16000",
+                            str(wav)], timeout=120)
+                lines = transcribe.transcribe(wav)
+                if lines is None:                         # o reconhecimento de fala parou de funcionar
+                    self.speech_on = False
+                    return
+                for s, e, text in lines:
+                    sc = quality.speech_moment(text)
+                    if sc:
+                        sec = int(start + s)
+                        if sc > self.speech.get(sec, (0, ""))[0]:
+                            self.speech[sec] = (sc, text)
+                self.speech_until = start + self.SPEECH_WIN
+                self.speech_lag = max(0.0, time.time() - self.speech_until)
+            except Exception:
+                log.debug("falha ao ouvir a fala", exc_info=True)
+                self.speech_until = start + self.SPEECH_WIN
+            finally:
+                safe_unlink(wav)
+                safe_unlink(lst)
+
     def _score_second(self, t):
         hist = [self.audio[s] for s in range(t - 600, t - 5) if s in self.audio]
         if len(hist) < 60:
             return None, []
+        base_score, reasons = self._score_signal(t, hist)
+        best = max((self.speech[s] for s in range(t, t + 3) if s in self.speech), default=None, key=lambda x: x[0])
+        if best and best[0] >= base_score:
+            return best[0], reasons + [f"🗣 falou: “{best[1].strip()[:50]}”"]
+        return base_score, reasons
+
+    def _score_signal(self, t, hist):
         hist = np.array(hist)
         med = float(np.median(hist))
         mad = float(np.median(np.abs(hist - med))) * 1.4826 + 1.0
@@ -434,6 +503,9 @@ class ChannelWorker(threading.Thread):
         limit = int(self.analyzed_until) - 3
         if self.chat:
             limit = min(limit, int(time.time()) - 18)
+        if self.speech_on and self.speech_lag < 90:
+            # espera a fala ser ouvida (se o PC estiver atrasado demais, segue só com áudio e chat)
+            limit = min(limit, int(self.speech_until) - 3) if self.speech_until else min(limit, int(self.analyzed_until) - 60)
         if not self.scored_until and self.segments:
             self.scored_until = int(self.segments[0][0])
         cfg = settings.get_all()
@@ -446,7 +518,7 @@ class ChannelWorker(threading.Thread):
             self.history.append(round(min(score, 10.0), 1))
             p = self.pending
             if p is None:
-                if score >= cfg["min_score"] and t - self.last_peak > cfg["cooldown"]:
+                if score >= cfg["min_score"] and t - self.last_peak > cfg["gap"]:
                     self.pending = {"peak": t, "score": score, "reasons": reasons, "t0": t}
             elif t - p["t0"] <= 12:
                 if score > p["score"]:
@@ -457,6 +529,9 @@ class ChannelWorker(threading.Thread):
     def _queue_pending(self):
         p, self.pending = self.pending, None
         self.last_peak = p["peak"]
+        self.stats["momentos"] += 1
+        if any(r.startswith("🗣") for r in p["reasons"]):
+            self.stats["pela_fala"] += 1
         cfg = settings.get_all()
         with self._lock:
             self.jobs.append({"start": p["peak"] - cfg["before"], "end": p["peak"] + cfg["after"],
@@ -507,6 +582,7 @@ class ChannelWorker(threading.Thread):
                 log.info("🗑 %s: momento descartado (nota %.1f, abaixo de %.1f). %s", self.name, q["final"], thr,
                          " ".join(q["reasons"]))
                 safe_unlink(h)
+                self.stats["descartados"] += 1
                 return
             m = meta.make_meta(self.name, self.platform, self.url, lines, gain=gain, avoid=[r["title"] for r in prev],
                                speech=speech or [], peak_rel=peak_rel, avoid_hooks=[r["overlay"] for r in prev],
@@ -519,6 +595,7 @@ class ChannelWorker(threading.Thread):
                 "features": json.dumps(q["features"]) if q["features"] else None,
                 "signal_score": q["signal"], "content_score": q["content"], **m,
                 **extra_fields(h, cs, ce, job["peak"] - start, spoken, words)})
+            self.stats["cortes"] += 1
             after_insert(clip_id)
             log.info("✂ corte pronto: %s (nota %.1f)", name, q["final"])
         except Exception:
@@ -540,5 +617,7 @@ class ChannelWorker(threading.Thread):
         self.segments = keep
         for k in [k for k in self.audio if k < limit - 600]:
             del self.audio[k]
+        for k in [k for k in self.speech if k < limit - 600]:
+            self.speech.pop(k, None)
         if self.chat:
             self.chat.prune(int(limit) - 600)

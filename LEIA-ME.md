@@ -117,6 +117,16 @@ Instale nos dois PCs do mesmo jeito: Python, extrair o zip e `INICIAR.bat`.
 
 ---
 
+## Como os momentos das lives são achados
+
+- **Áudio:** grito, explosão, risada alta (comparado com o normal dos últimos 10 minutos).
+- **Chat:** chat acelerando ou cheio de "KKKK", "clipa"... (Twitch e Kick).
+- **Fala:** o programa ouve o que o streamer fala o tempo todo. Reação ("meu deus", "que isso"), descoberta
+  ("nunca vi isso"), bug ("bugou", "atravessou") e risada viram corte mesmo sem grito. Precisa do reconhecimento
+  de fala instalado. Dá pra desligar em Ajustes.
+- **Intervalo mínimo entre cortes** (Ajustes, padrão 40s): quanto menor, mais cortes seguidos.
+- O cartão da live mostra quantos momentos foram achados, quantos viraram corte e se o chat e a fala estão ativos.
+
 ## Recursos dos cortes
 
 - **Sobra antes e depois:** cada corte guarda 30s a mais antes e depois (muda em Ajustes). No ✂ Editar corte, puxe

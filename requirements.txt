@@ -7,3 +7,5 @@ streamlink
 yt-dlp[default,curl-cffi]
 # detecta quando o streamer está em tela cheia na câmera (full cam)
 opencv-python-headless<5
+# chat da Kick (lido ao vivo pra achar momentos)
+websockets>=12

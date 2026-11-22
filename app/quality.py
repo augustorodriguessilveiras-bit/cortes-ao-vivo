@@ -104,6 +104,27 @@ def evaluate(signal, speech, peak_rel, dur=None):
             "reasons": reasons, "features": feats}
 
 
+# palavras comuns demais pra, sozinhas, virarem corte ("o que você quer?", "corre ali")
+WEAK = {"o que", "corre", "cuidado", "nossa", "como assim", "da pra", "achei", "consegui", "funciona", "detalhe",
+        "tem como", "olha esse", "olha essa", "olha ali", "olha la", "repara", "preso", "voando", "sumiu", "fisica",
+        "haha", "hehe", "rsrs", "doido", "nao nao"}
+
+
+def speech_moment(text):
+    """
+    Nota (0-10) de uma frase falada na live: reação, descoberta, bug ou risada. 0 = frase comum.
+    Precisa de pelo menos uma palavra forte ("meu deus", "que isso", "bugou", "kkkk"...) ou duas comuns.
+    """
+    t = _norm(text)
+    found = _hits(t, REACTION) + _hits(t, DISCOVERY) + _hits(t, BUG) + _hits(t, FUNNY)
+    strength = sum(0.5 if w in WEAK else 1.0 for w in dict.fromkeys(found))
+    if strength < 1:
+        return 0.0
+    excl = (text or "").count("!") + (text or "").count("?")
+    bug = 0.6 if _hits(t, BUG) and any(w not in WEAK for w in _hits(t, BUG)) else 0
+    return round(min(10.0, 3.2 + 2.0 * strength + bug + min(0.8, excl * 0.3)), 1)
+
+
 # ------------------------------------------------------------ aprender com você
 def record(clip_id, features_json, label):
     """label 1 = você aprovou/postou · 0 = você excluiu sem usar."""

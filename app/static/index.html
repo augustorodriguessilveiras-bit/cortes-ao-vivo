@@ -230,6 +230,8 @@ details.meta[open] summary{margin-bottom:6px}
     <label>Descartar sozinho cortes com nota abaixo de <input type="range" id="discard_below" min="0" max="8" step="0.5"><output></output></label>
     <span class="wide muted" id="learnInfo"></span>
     <label>Duração do corte <input type="range" id="dur" min="20" max="90" step="5"><output></output></label>
+    <label>Intervalo mínimo entre cortes <input type="range" id="gap" min="15" max="180" step="5"><output></output></label>
+    <label><input type="checkbox" id="live_speech"> Ouvir a fala das lives pra achar mais momentos</label>
     <label>Máx. cortes por VOD <input type="range" id="vod_max" min="3" max="40" step="1"><output></output></label>
     <label>VODs ao mesmo tempo <input type="range" id="vod_parallel" min="1" max="3" step="1"><output></output></label>
     <label><input type="checkbox" id="ov_on"> Título dentro do vídeo</label>
@@ -533,11 +535,14 @@ function renderLives(){
           <img src="/api/channels/${c.id}/frame?b=${Math.floor(Date.now() / 6000)}" alt="Prévia da live gravando" onerror="this.remove()">
           <span class="tag">🔴 gravando vídeo + áudio · ${esc(c.quality || "qualidade original")}</span></div>
         <div class="chips">
-          <span class="chip ok">${c.platform === "twitch" ? (c.chat ? "Momentos: pelo chat + áudio" : "Momentos: pelo áudio") : "Momentos: pelo áudio (a Kick não libera o chat)"}</span>
+          <span class="chip ok">🔊 Áudio</span>
+          ${c.chat ? `<span class="chip ${c.chat_status === "conectado" ? "ok" : "bad"}" title="${esc(c.chat_status || "")}">💬 Chat: ${c.chat_status === "conectado" ? "lendo" : c.chat_status === "conectando" ? "conectando…" : "sem acesso agora"}</span>` : `<span class="chip">💬 Chat: não</span>`}
+          <span class="chip ${c.speech === "ouvindo" ? "ok" : c.speech ? "bad" : ""}">${c.speech === "ouvindo" ? "🗣 Ouvindo a fala" : c.speech ? "🗣 Fala " + esc(c.speech) : "🗣 Fala: desligada"}</span>
           <span class="chip ${c.cam ? "ok" : "bad"}">${c.cam ? "✓ Webcam marcada" : "Webcam: clique em 📷 Marcar câmera"}</span></div>
         <div class="meter"><i style="width:${(c.score || 0) * 10}%"></i></div>
         <div class="row between muted"><span>Hype agora: <b style="color:var(--text)">${c.score ?? 0}</b>/10</span><span>linha = nota mínima</span></div>
-        ${spark(c.history, ST.settings.min_score)}` : ""}
+        ${spark(c.history, ST.settings.min_score)}
+        ${c.stats ? `<div class="muted" style="font-size:12px">Nesta live: <b style="color:var(--text)">${c.stats.momentos}</b> momentos achados${c.stats.pela_fala ? ` (${c.stats.pela_fala} pela fala)` : ""} · <b style="color:var(--text)">${c.stats.cortes}</b> cortes${c.stats.descartados ? ` · ${c.stats.descartados} descartados pela nota` : ""}</div>` : ""}` : ""}
       <div class="actions">
         ${live ? `<button class="small primary" data-act="clip" data-id="${c.id}">✂ Cortar agora</button><button class="small" data-act="cam" data-id="${c.id}">📷 ${c.cam ? "Câmera ✓" : "Marcar câmera"}</button>` : ""}
         <a class="btn small" href="${esc(c.url)}" target="_blank" rel="noopener">Abrir live ↗</a>
@@ -590,8 +595,8 @@ async function flushSettings(){
 window.addEventListener("beforeunload", () => { if (Object.keys(pendingSet).length) navigator.sendBeacon?.("/api/settings", new Blob([JSON.stringify(pendingSet)], { type: "application/json" })); });
 function bindSettings(){
   if (settingsBound) return; settingsBound = true;
-  const fmt = { vod_parallel: v => +v === 1 ? "1 (um de cada vez)" : +v === 3 ? "3 (só se o PC for forte)" : `${v}`, pad: v => +v === 0 ? "nenhuma" : `${v}s antes e ${v}s depois`, style: v => v, min_score: v => (+v).toFixed(1), discard_below: v => +v === 0 ? "nunca" : (+v).toFixed(1), dur: v => `${v}s (${Math.round(v * 2 / 3)}s antes do momento, ${v - Math.round(v * 2 / 3)}s depois)`, vod_max: v => v, ov_secs: v => +v > 40 ? "o vídeo todo" : v + "s" };
-  for (const id of ["min_score", "discard_below", "dur", "vod_max", "ov_secs", "ov_on", "tags", "audio_mode", "posted_cleanup", "pad", "style", "vod_parallel"]){
+  const fmt = { gap: v => `${v}s`, live_speech: v => v, vod_parallel: v => +v === 1 ? "1 (um de cada vez)" : +v === 3 ? "3 (só se o PC for forte)" : `${v}`, pad: v => +v === 0 ? "nenhuma" : `${v}s antes e ${v}s depois`, style: v => v, min_score: v => (+v).toFixed(1), discard_below: v => +v === 0 ? "nunca" : (+v).toFixed(1), dur: v => `${v}s (${Math.round(v * 2 / 3)}s antes do momento, ${v - Math.round(v * 2 / 3)}s depois)`, vod_max: v => v, ov_secs: v => +v > 40 ? "o vídeo todo" : v + "s" };
+  for (const id of ["min_score", "discard_below", "dur", "vod_max", "ov_secs", "ov_on", "tags", "audio_mode", "posted_cleanup", "pad", "style", "vod_parallel", "gap", "live_speech"]){
     const el = $("#" + id), out = el.parentElement.querySelector("output"), val = ST.settings[id];
     if (el.type === "checkbox") el.checked = !!val; else el.value = val;
     if (out) out.textContent = fmt[id](val);

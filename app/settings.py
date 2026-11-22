@@ -7,7 +7,8 @@ from . import config as C
 DEFAULTS = {
     "min_score": C.MIN_SCORE,          # nota mínima pra cortar sozinho
     "dur": 60,                         # duração total do corte (segundos); 2/3 antes do pico, 1/3 depois
-    "cooldown": C.COOLDOWN_SECONDS,    # intervalo mínimo entre cortes da mesma live
+    "gap": 40,                         # intervalo mínimo entre um momento e outro da mesma live (segundos)
+    "live_speech": True,               # ouve a fala das lives o tempo todo pra achar reação sem grito
     "ov_on": True,                     # faixa branca com título dentro do vídeo
     "ov_secs": 10,                     # por quantos segundos (41 = vídeo todo)
     "tags": "#gta6 #gtavi #gta #gta6brasil #cortes #cortesdelive #fyp #viral",
@@ -32,6 +33,8 @@ def get_all():
     data["dur"] = dur
     data["before"] = round(dur * 2 / 3)        # mais tempo antes: o corte mostra o que levou ao momento
     data["after"] = dur - data["before"]
+    data["gap"] = max(15, min(180, int(data["gap"])))
+    data["cooldown"] = data["gap"]             # nome antigo, usado em alguns lugares
     return data
 
 
