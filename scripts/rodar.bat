@@ -46,8 +46,15 @@ if errorlevel 1 (
 )
 
 echo  Instalando o reconhecimento de fala ^(opcional, na 1a vez demora^)...
-%PY% -m pip install --disable-pip-version-check -q --upgrade faster-whisper >nul 2>nul
-if errorlevel 1 echo  ^(nao deu pra instalar o reconhecimento de fala; o programa funciona normal sem ele^)
+if not exist dados mkdir dados
+%PY% -m pip install --disable-pip-version-check -q --upgrade faster-whisper > "dados\fala_instalacao.log" 2>&1
+if errorlevel 1 (
+  echo.
+  echo  [AVISO] Nao deu pra instalar o reconhecimento de fala.
+  echo  O programa funciona sem ele, mas acha menos momentos e os titulos ficam menos ligados ao que o streamer fala.
+  echo  O motivo aparece no painel, em Ajustes. Mande um print pro Claude.
+  echo.
+)
 
 echo.
 echo  ==========================================

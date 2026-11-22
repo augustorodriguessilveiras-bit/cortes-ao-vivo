@@ -9,8 +9,30 @@ import threading
 log = logging.getLogger("recorder")
 _model = None
 _failed = False
+_error = ""
 _lock = threading.Lock()
 MODEL = "base"  # leve (~150 MB). Baixa sozinho na primeira vez.
+
+
+def status():
+    """Pro painel: o reconhecimento de fala está funcionando?"""
+    from . import config as C
+    if not available():
+        log_txt = ""
+        try:
+            log_txt = (C.DATA_DIR / "fala_instalacao.log").read_text(encoding="utf-8", errors="ignore").strip()[-400:]
+        except OSError:
+            pass
+        return {"state": "nao_instalado", "error": log_txt}
+    if _failed:
+        return {"state": "erro", "error": _error}
+    return {"state": "pronto" if _model is not None else "instalado", "error": ""}
+
+
+def retry():
+    """Tenta de novo depois de um erro (ex: a internet caiu enquanto baixava o modelo)."""
+    global _failed, _error
+    _failed, _error = False, ""
 
 
 def available():
@@ -49,6 +71,8 @@ def transcribe_words(path):
                         words.append((round(float(w.start), 2), round(float(w.end), 2), w.word.strip()))
             return lines, words
     except Exception as e:
+        global _error
         _failed = True
+        _error = str(e)[:300]
         log.warning("⚠ O reconhecimento de fala não funcionou (%s). Os cortes continuam saindo normalmente, só sem ouvir a fala.", str(e)[:120])
         return None

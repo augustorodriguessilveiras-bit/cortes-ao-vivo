@@ -31,7 +31,7 @@ FUNNY = ["kkk", "haha", "hehe", "rsrs", "risos", "zoeira", "que vergonha", "ridi
 
 WIN_BEFORE, WIN_AFTER = 10.0, 12.0     # janela ao redor do momento forte (segundos)
 MODEL_PATH = C.DATA_DIR / "aprendizado.json"
-FEATS = ["sinal", "fala", "reacao", "descoberta", "engracado", "sem_fala", "bug"]
+FEATS = ["sinal", "fala", "reacao", "descoberta", "engracado", "sem_fala", "bug", "nao_ouviu"]
 
 with db._lock:
     db._conn.execute("CREATE TABLE IF NOT EXISTS feedback (id INTEGER PRIMARY KEY AUTOINCREMENT, "
@@ -59,7 +59,15 @@ def evaluate(signal, speech, peak_rel, dur=None):
     """
     signal = min(10.0, max(0.0, signal or 0))
     if speech is None:
-        return {"known": False, "final": round(signal, 1), "content": None, "signal": signal, "reasons": [], "features": None}
+        # sem ouvir a fala: o aprendizado usa só o pico (áudio/chat), pra aprovar/excluir contar mesmo assim
+        feats = {f: 0.0 for f in FEATS}
+        feats.update(sinal=signal / 10, nao_ouviu=1.0)
+        final = signal
+        learned = predict(feats)
+        if learned is not None:
+            final = 0.5 * final + 0.5 * learned * 10
+        return {"known": False, "final": round(min(10.0, final), 1), "content": None, "signal": signal, "reasons": [],
+                "features": feats}
     p = peak_rel if peak_rel is not None else (dur or 60) * 0.65
     a, b = p - WIN_BEFORE, p + WIN_AFTER
     near = [(s, e, t) for s, e, t in speech if e >= a and s <= b]
@@ -129,6 +137,8 @@ def speech_moment(text):
 def record(clip_id, features_json, label):
     """label 1 = você aprovou/postou · 0 = você excluiu sem usar."""
     if not features_json:
+        features_json = _signal_only(clip_id)
+    if not features_json:
         return
     if db.query("SELECT id FROM feedback WHERE clip_id=?", (clip_id,)):
         return
@@ -161,6 +171,29 @@ def _training_rows():
     data = {r["clip_id"]: (r["features"], r["label"]) for r in db.query("SELECT clip_id, features, label FROM feedback")}
     data.update(_view_labels())            # as views mandam mais que a aprovação
     return [{"features": f, "label": l} for f, l in data.values()]
+
+
+def _signal_only(clip_id):
+    """Corte sem a fala ouvida: usa só a nota do pico."""
+    c = db.query("SELECT signal_score, score FROM clips WHERE id=?", (clip_id,))
+    if not c:
+        return None
+    feats = {f: 0.0 for f in FEATS}
+    feats.update(sinal=min(10.0, float(c[0]["signal_score"] or c[0]["score"] or 0)) / 10, nao_ouviu=1.0)
+    return json.dumps(feats)
+
+
+def backfill():
+    """Cortes que você já aprovou/postou antes (e não contaram pro aprendizado) passam a contar."""
+    rows = db.query("SELECT id, features FROM clips WHERE status IN ('aprovado','postado') "
+                    "AND id NOT IN (SELECT clip_id FROM feedback WHERE clip_id IS NOT NULL)")
+    for r in rows:
+        f = r["features"] or _signal_only(r["id"])
+        if f:
+            db.insert("feedback", {"clip_id": r["id"], "features": f, "label": 1, "at": time.time()})
+    if rows:
+        train()
+    return len(rows)
 
 
 def stats():

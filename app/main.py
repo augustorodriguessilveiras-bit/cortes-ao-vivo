@@ -61,6 +61,12 @@ async def lifespan(app):
     # cortes de versões antigas: o texto que está no vídeo é o texto salvo
     db.execute("UPDATE clips SET overlay_applied=COALESCE(overlay,'') WHERE overlay_applied IS NULL")
     CLIP_POOL.submit(render.encoder)  # descobre a placa de vídeo logo no começo
+    try:
+        n = quality.backfill()
+        if n:
+            plog.info("🧠 %d cortes que você já tinha aprovado/postado passaram a contar pro aprendizado.", n)
+    except Exception:
+        plog.debug("backfill do aprendizado falhou", exc_info=True)
     for ch in db.query("SELECT * FROM channels"):
         start_worker(ch)
     vod.start()
@@ -123,8 +129,33 @@ def state():
     disk = shutil.disk_usage(C.DATA_DIR)
     enc = render._enc[0] if render._enc else "verificando…"
     return {"channels": chans, "vods": vods, "settings": settings.get_all(), "activity": list(ACTIVITY)[::-1][:15],
-            "version": version.status(), "learning": quality.stats(),
+            "version": version.status(), "learning": quality.stats(), "speech": transcribe.status(),
             "disk_free_gb": round(disk.free / 1e9, 1), "encoder": enc}
+
+
+@app.post("/api/speech/test")
+def speech_test():
+    """Testa o reconhecimento de fala (na 1ª vez baixa o modelo, ~150 MB)."""
+    if not transcribe.available():
+        raise HTTPException(400, "O reconhecimento de fala não está instalado. Feche e abra o INICIAR.bat de novo; "
+                                 "se aparecer o aviso de erro na janela preta, mande um print pro Claude.")
+    transcribe.retry()
+
+    def run():
+        wav = C.DATA_DIR / "_teste_fala.wav"
+        try:
+            render.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",
+                        "anullsrc=r=16000:cl=mono", "-t", "2", str(wav)], timeout=60)
+            r = transcribe.transcribe(wav)
+            if r is None:
+                plog.warning("⚠ O reconhecimento de fala deu erro: %s", transcribe.status()["error"][:200])
+            else:
+                plog.info("🗣 Reconhecimento de fala funcionando!")
+        finally:
+            procs.safe_unlink(wav)
+    MANUAL_POOL.submit(run)
+    plog.info("🗣 Testando o reconhecimento de fala (na 1ª vez baixa ~150 MB, pode levar uns minutos)…")
+    return {"ok": True}
 
 
 @app.post("/api/settings")

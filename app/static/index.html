@@ -229,6 +229,7 @@ details.meta[open] summary{margin-bottom:6px}
     <label>Nota mínima p/ cortar <input type="range" id="min_score" min="3" max="9.5" step="0.5"><output></output></label>
     <label>Descartar sozinho cortes com nota abaixo de <input type="range" id="discard_below" min="0" max="8" step="0.5"><output></output></label>
     <span class="wide muted" id="learnInfo"></span>
+    <span class="wide muted" id="speechInfo"></span>
     <label>Duração do corte <input type="range" id="dur" min="20" max="90" step="5"><output></output></label>
     <label>Intervalo mínimo entre cortes <input type="range" id="gap" min="15" max="180" step="5"><output></output></label>
     <label><input type="checkbox" id="live_speech"> Ouvir a fala das lives pra achar mais momentos</label>
@@ -569,6 +570,15 @@ function renderLives(){
   if (L) $("#learnInfo").innerHTML = L.ativo
     ? `🧠 A nota já está aprendendo com você (${L.bons} bons, ${L.ruins} ruins${L.com_views ? `, ${L.com_views} com views anotadas` : ""}).`
     : `🧠 Aprendendo com você: ${L.bons} de 15 bons (aprovados/postados) e ${L.ruins} de 15 ruins (excluídos). Quando chegar nos dois, a nota passa a seguir o seu gosto.${L.com_views ? ` ${L.com_views} cortes com views anotadas.` : " Anotar as views dos postados ajuda muito."}`;
+  const SP = ST.speech;
+  if (SP){
+    const msg = { pronto: "🗣 Reconhecimento de fala: <b style='color:var(--ok)'>funcionando</b>.",
+      instalado: "🗣 Reconhecimento de fala: instalado (liga sozinho no primeiro corte).",
+      erro: "🗣 Reconhecimento de fala: <b style='color:var(--warn)'>deu erro</b>. Sem ele o programa acha menos momentos e os títulos ficam menos ligados à fala.",
+      nao_instalado: "🗣 Reconhecimento de fala: <b style='color:var(--warn)'>não instalado</b>. Sem ele o programa acha menos momentos e os títulos ficam menos ligados à fala." }[SP.state] || "";
+    const html = `${msg} ${SP.state !== "pronto" ? `<button class="small" id="spTest">Testar agora</button>` : ""}${SP.error ? `<br><span style="font-size:11.5px">Motivo: ${esc(SP.error.slice(-220))}</span>` : ""}`;
+    if ($("#speechInfo").dataset.h !== html){ $("#speechInfo").innerHTML = html; $("#speechInfo").dataset.h = html; }
+  }
   if (!ST.version){ showOldServer(); return; }
   const V = ST.version || {};
   $("#sys").textContent = `Versão ${V.local || "?"} · Vídeo: ${ST.encoder || "…"} · ${ST.disk_free_gb} GB livres`;
@@ -582,6 +592,11 @@ function renderLives(){
 }
 
 /* ------------------------------------------------------------ ajustes */
+document.addEventListener("click", async e => {
+  if (e.target.id !== "spTest") return;
+  try { await post("/api/speech/test"); toast("Testando o reconhecimento de fala… acompanhe em \"O que está acontecendo agora\" (na 1ª vez pode levar uns minutos).", 8000); }
+  catch (err) { toast(err.message, 10000); }
+});
 let settingsBound = false, saveSet = null, pendingSet = {};
 async function flushSettings(){
   const body = pendingSet; pendingSet = {}; clearTimeout(saveSet);
