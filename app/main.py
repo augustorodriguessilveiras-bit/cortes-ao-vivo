@@ -225,9 +225,21 @@ def channel_frame(cid: int):
     if not w or w.status != "gravando":
         raise HTTPException(400, "Esse canal não está gravando agora. A imagem aparece quando ele estiver ao vivo.")
     fresh = out.exists() and time.time() - out.stat().st_mtime < 4
-    if not fresh and not w.latest_frame(out):
+    if not fresh:
+        tmp = C.DATA_DIR / f"_quadro_live_{cid}_{secrets.token_hex(4)}.jpg"
+        try:
+            if w.latest_frame(tmp):
+                try:
+                    tmp.replace(out)
+                except OSError:            # Windows: a imagem antiga ainda está sendo enviada; manda a nova direto
+                    return Response(tmp.read_bytes(), media_type="image/jpeg", headers={"Cache-Control": "max-age=30"})
+        except Exception:
+            pass
+        finally:
+            procs.safe_unlink(tmp)
+    if not out.exists():
         raise HTTPException(400, "Ainda não tem imagem da live. Espere uns 20 segundos depois que começar a gravar.")
-    return FileResponse(out, headers={"Cache-Control": "max-age=30"})
+    return Response(out.read_bytes(), media_type="image/jpeg", headers={"Cache-Control": "max-age=30"})
 
 
 @app.post("/api/channels/{cid}/cam")
@@ -987,15 +999,29 @@ def clip_horizontal(clip_id: int):
 
 @app.get("/api/clips/{clip_id}/frame")
 def clip_frame(clip_id: int, t: float = 10):
+    """Foto de um momento do corte (pra prévia e pra marcar a câmera). Volta a foto direto, sem arquivo fixo:
+    no Windows, duas fotos do mesmo corte ao mesmo tempo (prévia + câmera) brigavam pelo mesmo arquivo."""
     c = _clip(clip_id)
-    out = C.DATA_DIR / f"quadro_corte_{clip_id}.jpg"
-    out.unlink(missing_ok=True)
-    render.frame_jpg(C.CLIPS_DIR / c["file_h"], out, t=t)
-    if not out.exists():
-        render.frame_jpg(C.CLIPS_DIR / c["file_h"], out, t=1)
-    if not out.exists():
-        raise HTTPException(400, "Não deu pra pegar a imagem desse corte")
-    return FileResponse(out, headers={"Cache-Control": "no-store"})
+    src = C.CLIPS_DIR / (c.get("file_h") or "")
+    if not c.get("file_h") or not src.exists():
+        raise HTTPException(400, "O vídeo original desse corte não está mais no computador (foi apagado depois de postado).")
+    try:
+        dur = render.probe(src)[2] or 0
+    except Exception:
+        dur = 0
+    if dur:
+        t = min(max(0.0, t), max(0.0, dur - 1))
+    out = C.DATA_DIR / f"_quadro_{clip_id}_{secrets.token_hex(4)}.jpg"
+    try:
+        for tt in (t, (c.get("core_start") or 0) + 1.5, dur * 0.5 if dur else 1, 1.0, 0.0):
+            try:
+                if render.frame_jpg(src, out, t=tt):
+                    return Response(out.read_bytes(), media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+            except Exception:
+                continue
+    finally:
+        procs.safe_unlink(out)
+    raise HTTPException(400, "Não deu pra pegar a imagem desse corte. Clique em 🔄 pra tentar outro momento.")
 
 
 def _clip_files(c):

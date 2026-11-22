@@ -146,8 +146,11 @@ def frame_jpg(src, out, t=None, sseof=None, width=None):
     tries.append([])
     Path(out).unlink(missing_ok=True)
     for pre in tries:
-        run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", *pre, "-i", str(src),
-             "-frames:v", "1", "-update", "1", *vf, "-q:v", "3", str(out)], timeout=60)
+        try:                                     # se um ponto der erro, tenta o próximo (antes desistia no 1º erro)
+            run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", *pre, "-i", str(src),
+                 "-frames:v", "1", "-update", "1", *vf, "-q:v", "3", str(out)], timeout=60)
+        except Exception:
+            continue
         if Path(out).exists() and Path(out).stat().st_size > 0:
             return True
     return False
