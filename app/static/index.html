@@ -660,8 +660,8 @@ window.addEventListener("beforeunload", () => { if (Object.keys(pendingSet).leng
 function bindSettings(){
   if (settingsBound) return; settingsBound = true;
   $("#cap_style").innerHTML = styleOpts("cap", "Variar sozinho (cada corte de um jeito)");
-  $("#cap_font").innerHTML = styleOpts("font", "Variar sozinho");
-  $("#wm_style").innerHTML = styleOpts("wm", "Variar sozinho");
+  $("#cap_font").innerHTML = styleOpts("font", "Variar sozinho (cada corte de um jeito)");
+  $("#wm_style").innerHTML = styleOpts("wm", "Variar sozinho (cada corte de um jeito)");
   const fmt = { cap_style: v => v, cap_font: v => v, wm_style: v => v, dur_futebol: v => `${Math.floor(v / 60)}min${v % 60 ? (" " + (v % 60) + "s") : ""} (o lance inteiro + a reação)`, auto_clean_days: v => +v === 0 ? "nunca" : `${v} dia${+v > 1 ? "s" : ""}`, max_gb: v => +v === 0 ? "sem limite" : `${v} GB`, gap: v => `${v}s`, live_speech: v => v, vod_listen_all: v => v, vod_parallel: v => (+v === 1 ? "1 (um de cada vez)" : +v === 3 ? "3 (só se o PC for forte)" : `${v}`) + (+v > 1 ? " · com live gravando: 1" : ""), pad: v => +v === 0 ? "nenhuma" : `${v}s antes e ${v}s depois`, style: v => v, min_score: v => (+v).toFixed(1), discard_below: v => +v === 0 ? "nunca" : (+v).toFixed(1), dur: v => `${v}s (${Math.round(v * 2 / 3)}s antes do momento, ${v - Math.round(v * 2 / 3)}s depois)`, vod_max: v => v, ov_secs: v => +v > 40 ? "o vídeo todo" : v + "s" };
   for (const id of ["min_score", "discard_below", "dur", "vod_max", "ov_secs", "ov_on", "tags", "audio_mode", "posted_cleanup", "pad", "style", "vod_parallel", "gap", "live_speech", "vod_listen_all", "auto_clean_days", "max_gb", "dur_futebol", "cap_style", "cap_font", "wm_style"]){
     const el = $("#" + id), out = el.parentElement.querySelector("output"), val = ST.settings[id];
@@ -916,9 +916,9 @@ function styleOpts(kind, autoLabel){
   return `<option value="auto">${autoLabel}</option>` + Object.entries(S).map(([k, v]) => `<option value="${k}">${esc(typeof v === "string" ? v : v.name)}</option>`).join("");
 }
 function fillStyleSelects(c){
-  $("#edCapStyle").innerHTML = styleOpts("cap", "Cores: variar sozinho");
-  $("#edCapFont").innerHTML = styleOpts("font", "Letra: variar sozinho");
-  $("#edWmStyle").innerHTML = styleOpts("wm", "Variar sozinho");
+  $("#edCapStyle").innerHTML = styleOpts("cap", "Cores: o padrão dos Ajustes");
+  $("#edCapFont").innerHTML = styleOpts("font", "Letra: o padrão dos Ajustes");
+  $("#edWmStyle").innerHTML = styleOpts("wm", "O padrão dos Ajustes");
   $("#edCapStyle").value = c.cap_style || "auto"; $("#edCapFont").value = c.cap_font || "auto"; $("#edWmStyle").value = c.wm_style || "auto";
 }
 function edSty(){

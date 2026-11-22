@@ -22,9 +22,10 @@ DEFAULTS = {
     "pad": 30,                         # sobra guardada antes e depois do corte (pra puxar mais no editor)
     "vod_parallel": 2,                 # quantos VODs são processados ao mesmo tempo (1 a 3)
     "dur_futebol": 120,                # cortes de futebol (streamer reagindo a jogo) são mais longos
-    "cap_style": "auto",               # estilo do título nos cortes novos (auto = varia sozinho)
-    "cap_font": "auto",                # letra do título (auto = varia sozinho)
-    "wm_style": "auto",                # estilo da marca d'água (auto = varia sozinho)
+    "cap_style": "branco",             # estilo do título nos cortes novos (padrão: faixa branca; "auto" = varia sozinho)
+    "cap_font": "classica",            # letra do título
+    "wm_style": "escuro",              # estilo da marca d'água
+    "sty_v": 2,
     "style": "padrao",                 # estilo dos cortes novos: padrao · dinamico (zoom e começo/fim esperto)
 }
 _lock = threading.Lock()
@@ -33,7 +34,11 @@ _lock = threading.Lock()
 def get_all():
     data = dict(DEFAULTS)
     try:
-        data.update({k: v for k, v in json.loads(C.SETTINGS_PATH.read_text(encoding="utf-8")).items() if k in DEFAULTS})
+        saved = json.loads(C.SETTINGS_PATH.read_text(encoding="utf-8"))
+        if saved.get("sty_v") != DEFAULTS["sty_v"]:      # versão que variava sozinho: volta pro estilo padrão
+            for k in ("cap_style", "cap_font", "wm_style"):
+                saved.pop(k, None)
+        data.update({k: v for k, v in saved.items() if k in DEFAULTS})
     except Exception:
         pass
     dur = max(20, min(90, int(data["dur"])))

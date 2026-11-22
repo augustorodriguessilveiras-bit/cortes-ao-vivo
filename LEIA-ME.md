@@ -156,7 +156,8 @@ Instale nos dois PCs do mesmo jeito: Python, extrair o zip e `INICIAR.bat`.
   ⏫ Passar na frente. Trecho de VOD por tempo e corte enviado têm fila própria e não esperam os VODs.
 - **🎨 Cores e letras:** o título tem 8 estilos de cor (faixa branca, preta, amarela, verde, rosa, vermelha, ou sem
   faixa com contorno) e 6 letras; a marca d'água tem 6 estilos (escura, verde, branca, preta, amarela, contorno).
-  Por padrão cada corte sai de um jeito; dá pra fixar um estilo em Ajustes ou escolher em cada corte no ✂ Editar corte.
+  Os cortes saem no estilo padrão (faixa branca, marca d'água escura); você muda as cores em cada corte no
+  ✂ Editar corte. Em Ajustes dá pra mudar o padrão ou escolher "Variar sozinho".
   Fontes: Anton, Archivo Black, Bangers, Bebas Neue (licença OFL) e Luckiest Guy (licença Apache), em app/static/fonts.
 - **📤 Enviar um corte seu:** manda um trecho que você cortou e ele sai no mesmo formato dos automáticos.
 - **✂ Cortar um trecho de VOD:** cole o link do vídeo da live e o tempo (ex: de 3:13:00 até 3:15:00). O programa
