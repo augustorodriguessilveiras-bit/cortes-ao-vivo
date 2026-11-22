@@ -3,15 +3,24 @@ chcp 65001 >nul
 title Cortes ao Vivo
 cd /d "%~dp0.."
 
-rem usa o Python 3.14 se ele estiver instalado (mais garantido); senao, o "python" padrao
-set PY=python
-py -3.14 --version >nul 2>nul
-if not errorlevel 1 set PY=py -3.14
-py -V:3.14 --version >nul 2>nul
-if not errorlevel 1 set PY=py -V:3.14
+rem acha um Python que funcione DE VERDADE (o "py" novo pode existir sem o Python estar instalado)
+set PY=
+call :tenta "py -V:3.14"
+if not defined PY call :tenta "py -3.14"
+if not defined PY call :tenta "python"
+if not defined PY call :tenta "py"
+if not defined PY (
+  where py >nul 2>nul
+  if not errorlevel 1 (
+    echo.
+    echo  Instalando o Python 3.14 ^(so na primeira vez, alguns minutos^)...
+    py install 3.14
+    call :tenta "py -V:3.14"
+    if not defined PY call :tenta "py -3.14"
+  )
+)
 
-%PY% --version >nul 2>nul
-if errorlevel 1 (
+if not defined PY (
   echo.
   echo  [ERRO] Python nao encontrado.
   echo  Instale em https://www.python.org/downloads/
@@ -76,3 +85,10 @@ start "" /min powershell -NoProfile -WindowStyle Hidden -Command "for($i=0;$i -l
 echo.
 echo  [ERRO] O programa parou. Tire um print desta janela e mande pro Claude.
 pause
+exit /b
+
+rem testa se esse comando roda o Python de verdade (precisa responder "Python 3.x")
+:tenta
+%~1 --version 2>nul | findstr /b /c:"Python 3." >nul
+if not errorlevel 1 set "PY=%~1"
+exit /b
