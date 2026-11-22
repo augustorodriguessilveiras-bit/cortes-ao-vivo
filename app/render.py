@@ -668,8 +668,9 @@ def vertical_filter(vw, vh, layout, cam, focus_x, cap_h, cap_secs, dur=0, wm_idx
         y = th - cap_h // 2
     else:
         fit_h = even(W * vh / vw)
-        f = (f"[0:v]split=2[a][b];[a]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},"
-             f"boxblur=25:5,eq=brightness=-0.08[bg];[b]scale={W}:{fit_h},setsar=1{zp(W, fit_h)}[fg];"
+        # fundo desfocado: o desfoque é feito numa imagem pequena e depois aumentada (bem mais rápido, mesmo resultado)
+        f = (f"[0:v]split=2[a][b];[a]scale={W // 4}:{H // 4}:force_original_aspect_ratio=increase,crop={W // 4}:{H // 4},"
+             f"boxblur=6:3,eq=brightness=-0.08,scale={W}:{H}:flags=bilinear[bg];[b]scale={W}:{fit_h},setsar=1{zp(W, fit_h)}[fg];"
              f"[bg][fg]overlay=0:{(H - fit_h) // 2}[base]")
         y = (H - fit_h) // 2 - cap_h // 2
     if cap_yc is not None:          # posição escolhida no editor (centro da faixa)

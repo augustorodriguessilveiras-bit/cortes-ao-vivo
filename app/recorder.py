@@ -229,6 +229,7 @@ class ChannelWorker(threading.Thread):
         self.jobs = []
         self.chat = None
         self.speech = {}                 # segundo -> (nota da fala, frase)
+        self.speech_lines = deque()      # tudo o que foi ouvido: (início, fim, frase) no horário da live
         self.speech_until = 0.0          # até onde a fala já foi ouvida
         self.speech_on = False
         self.speech_lag = 0.0
@@ -454,6 +455,10 @@ class ChannelWorker(threading.Thread):
                 if lines is None:                         # o reconhecimento de fala parou de funcionar
                     self.speech_on = False
                     return
+                last_end = self.speech_lines[-1][1] if self.speech_lines else 0
+                for s, e, text in lines:
+                    if start + s >= last_end - 0.3:       # o pedacinho repetido entre um trecho e outro não duplica
+                        self.speech_lines.append((start + s, start + e, text))
                 for s, e, text in lines:
                     sc = quality.speech_moment(text)
                     if sc:
@@ -580,14 +585,38 @@ class ChannelWorker(threading.Thread):
         try:
             lst.write_text("".join(f"file '{Path(p).resolve().as_posix()}'\n" for _, p in segs), encoding="utf-8")
             pad = job.get("pad", 0)
-            start = max(job["start"] - pad, segs[0][0])
-            render.make_horizontal(["-f", "concat", "-safe", "0", "-i", str(lst)], h,
-                                   start - segs[0][0], job["end"] + pad - start)
+            try:
+                # rápido: só junta os pedaços já gravados, sem codificar de novo (fica com a qualidade original da live)
+                render.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-f", "concat", "-safe", "0",
+                            "-i", str(lst), "-map", "0:v:0", "-map", "0:a:0?", "-c", "copy", "-movflags", "+faststart",
+                            str(h)], timeout=600)
+                if render.probe(h)[2] < 1:
+                    raise RuntimeError("vídeo vazio")
+                start = segs[0][0]
+            except Exception:
+                log.debug("juntar sem codificar falhou; codificando", exc_info=True)
+                start = max(job["start"] - pad, segs[0][0])
+                render.make_horizontal(["-f", "concat", "-safe", "0", "-i", str(lst)], h,
+                                       start - segs[0][0], job["end"] + pad - start)
             cs, ce = max(0.0, job["start"] - start), job["end"] - start     # onde está o corte dentro do vídeo guardado
             cam = (db.query("SELECT cam FROM channels WHERE id=?", (self.id,)) or [{}])[0].get("cam")
             prev = db.query("SELECT title, overlay FROM clips WHERE channel_name=? ORDER BY created_at DESC LIMIT 60", (self.name,))
             gain = max([float(x) for x in __import__("re").findall(r"áudio \+(\d+) dB", " ".join(job["reasons"]))] or [0])
-            spoken, speech, words = listen(h, cs, ce)   # o que o streamer falou (só o pedaço do corte conta pra nota)
+            spoken = speech = None
+            words = []
+            if self.speech_on:
+                # reaproveita o que a escuta da live já ouviu (não precisa ouvir esse pedaço de novo)
+                deadline = time.time() + 90
+                while (self.speech_on and self.status == "gravando" and self.speech_until < job["end"]
+                       and time.time() < deadline and not self._stop.is_set()):
+                    time.sleep(2)
+                if self.speech_until >= job["end"]:
+                    hdur = render.probe(h)[2]
+                    spoken = [(s - start, e - start, t) for s, e, t in list(self.speech_lines)
+                              if e >= start and s <= start + hdur]
+                    speech = [(max(0.0, s - cs), min(ce, e) - cs, t) for s, e, t in spoken if e >= cs and s <= ce]
+            if speech is None:
+                spoken, speech, words = listen(h, cs, ce)   # o que o streamer falou (só o pedaço do corte conta pra nota)
             peak_rel = job["peak"] - start - cs
             q = quality.evaluate(job["score"], speech, peak_rel)
             manual = "corte manual" in job["reasons"]
@@ -633,5 +662,7 @@ class ChannelWorker(threading.Thread):
             del self.audio[k]
         for k in [k for k in self.speech if k < limit - 600]:
             self.speech.pop(k, None)
+        while self.speech_lines and self.speech_lines[0][1] < limit - 600:
+            self.speech_lines.popleft()
         if self.chat:
             self.chat.prune(int(limit) - 600)

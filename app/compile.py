@@ -82,8 +82,8 @@ def _segment(c, out, idx):
     if abs(vw / max(1, vh) - CW / CH) < 0.05:          # já é 16:9: só ajusta o tamanho
         base = f"[0:v]scale={CW}:{CH},setsar=1"
     else:                                              # vídeo em pé ou outro formato: fundo desfocado em vez de faixa preta
-        base = (f"[0:v]split=2[x][y];[x]scale={CW}:{CH}:force_original_aspect_ratio=increase,crop={CW}:{CH},"
-                f"boxblur=25:5,eq=brightness=-0.1[bg];[y]scale={CW}:{CH}:force_original_aspect_ratio=decrease,setsar=1[fg];"
+        base = (f"[0:v]split=2[x][y];[x]scale={CW // 4}:{CH // 4}:force_original_aspect_ratio=increase,"
+                f"crop={CW // 4}:{CH // 4},boxblur=6:3,eq=brightness=-0.1,scale={CW}:{CH}:flags=bilinear[bg];[y]scale={CW}:{CH}:force_original_aspect_ratio=decrease,setsar=1[fg];"
                 f"[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1")
     flt = (f"{base},fps=30,format=yuv420p,fade=t=in:st=0:d=0.3,fade=t=out:st={max(0, dur - 0.4):.2f}:d=0.4[b]")
     inputs = ["-i", str(tmp)]
