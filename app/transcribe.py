@@ -11,6 +11,8 @@ _model = None
 _failed = False
 _error = ""
 _lock = threading.Lock()
+_urgent = [0]                    # quantos pedidos das lives estão esperando (eles passam na frente dos VODs)
+_ulock = threading.Lock()
 MODEL = "base"  # leve (~150 MB). Baixa sozinho na primeira vez.
 
 
@@ -43,10 +45,11 @@ def available():
         return False
 
 
-def transcribe(path):
+def transcribe(path, urgent=False):
     """Retorna [(inicio, fim, texto)] em segundos, [] se ninguém falou, ou None se não deu pra ouvir.
-    (sem o tempo de cada palavra: bem mais leve, usado pra ouvir as lives e os VODs)"""
-    r = transcribe_words(path, words=False)
+    (sem o tempo de cada palavra: bem mais leve, usado pra ouvir as lives e os VODs)
+    urgent=True: pedido da live ao vivo, passa na frente do resto."""
+    r = transcribe_words(path, words=False, urgent=urgent)
     return None if r is None else r[0]
 
 
@@ -66,13 +69,30 @@ def load_audio(path):
     return np.frombuffer(r.stdout, np.float32).copy()
 
 
-def transcribe_words(path, words=True):
+def transcribe_words(path, words=True, urgent=False):
     """Igual ao transcribe, mas também com o tempo de cada palavra: (frases, [(inicio, fim, palavra)]) ou None."""
     global _model, _failed
     if _failed or not available():
         return None
+    import time as _t
+    if urgent:
+        with _ulock:
+            _urgent[0] += 1
+    else:
+        while _urgent[0] > 0:                 # a live está esperando: deixa ela ir primeiro
+            _t.sleep(0.2)
+    while True:                               # VOD que entrou junto com a live: dá a vez pra ela
+        _lock.acquire()
+        if urgent or _urgent[0] == 0:
+            break
+        _lock.release()
+        _t.sleep(0.05)
     try:
-        with _lock:
+        if True:
+            if urgent:
+                with _ulock:
+                    _urgent[0] -= 1
+                urgent = False
             if _model is None:
                 from faster_whisper import WhisperModel
                 log.info("🗣 Preparando o reconhecimento de fala (na 1ª vez baixa ~150 MB, pode demorar uns minutos)…")
@@ -94,8 +114,14 @@ def transcribe_words(path, words=True):
                         words.append((round(float(w.start), 2), round(float(w.end), 2), w.word.strip()))
             return lines, words
     except Exception as e:
+        if urgent:
+            with _ulock:
+                _urgent[0] -= 1
+            urgent = False
         global _error
         _failed = True
         _error = str(e)[:300]
         log.warning("⚠ O reconhecimento de fala não funcionou (%s). Os cortes continuam saindo normalmente, só sem ouvir a fala.", str(e)[:120])
         return None
+    finally:
+        _lock.release()

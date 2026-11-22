@@ -331,9 +331,9 @@ class ChannelWorker(threading.Thread):
         if src == "streamlink":
             sl = subprocess.Popen([sys.executable, "-m", "streamlink", "--stdout", "--retry-open", "3",
                                    "--twitch-low-latency", self.url, C.QUALITY],
-                                  stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, creationflags=render.NO_WINDOW)
+                                  stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, creationflags=render.REC_FLAGS)
             ff = subprocess.Popen(["ffmpeg", "-hide_banner", "-loglevel", "error", "-i", "pipe:0", *out],
-                                  stdin=sl.stdout, stderr=logf, creationflags=render.NO_WINDOW)
+                                  stdin=sl.stdout, stderr=logf, creationflags=render.REC_FLAGS)
             sl.stdout.close()
             self._procs = [sl, ff]
             self.quality = "original"
@@ -344,7 +344,7 @@ class ChannelWorker(threading.Thread):
                 args += [*a, "-i", u]
             maps = ["-map", "0:v:0", "-map", f"{1 if len(inputs) > 1 else 0}:a:0?"]
             ff = subprocess.Popen(["ffmpeg", "-hide_banner", "-loglevel", "error", *args, *maps, *out[4:]],
-                                  stderr=logf, creationflags=render.NO_WINDOW)
+                                  stderr=logf, creationflags=render.REC_FLAGS)
             self._procs = [ff]
             self.quality = f"{src['height']}p" if src.get("height") else "original"
 
@@ -423,7 +423,7 @@ class ChannelWorker(threading.Thread):
             self.analyzed_until = max(self.analyzed_until, start + dur)
 
     # ------------------------------------------------------------ ouvir a fala da live
-    SPEECH_WIN = 30      # ouve de 30 em 30 s, com 10 s repetidos pra não cortar palavra no meio
+    SPEECH_WIN = 45      # ouve de 45 em 45 s, com só 5 s repetidos pra não cortar palavra no meio
 
     def _speech_loop(self):
         """Fica ouvindo o que o streamer fala. Reação/descoberta/bug/risada viram momento, mesmo sem grito."""
@@ -434,8 +434,8 @@ class ChannelWorker(threading.Thread):
                 self._stop.wait(3)
                 continue
             end = segs[-1][0] + segs[-1][2]
-            start = max(self.speech_until - 10, segs[0][0], end - 120)    # atrasado demais: pula pro recente
-            if end - start < self.SPEECH_WIN - 10 and end - self.speech_until < 20:
+            start = max(self.speech_until - 5, segs[0][0], end - 150)     # atrasado demais: pula pro recente
+            if end - start < self.SPEECH_WIN:
                 self._stop.wait(3)
                 continue
             use = [(s, p) for s, p, d in segs if s + d > start and s < start + self.SPEECH_WIN]
@@ -450,7 +450,7 @@ class ChannelWorker(threading.Thread):
                 render.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(lst),
                             "-ss", f"{max(0.0, start - t0):.2f}", "-t", str(self.SPEECH_WIN), "-vn", "-ac", "1", "-ar", "16000",
                             str(wav)], timeout=120)
-                lines = transcribe.transcribe(wav)
+                lines = transcribe.transcribe(wav, urgent=True)     # live passa na frente dos VODs
                 if lines is None:                         # o reconhecimento de fala parou de funcionar
                     self.speech_on = False
                     return

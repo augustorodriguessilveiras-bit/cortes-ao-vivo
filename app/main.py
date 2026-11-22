@@ -52,6 +52,7 @@ def start_worker(ch):
 @asynccontextmanager
 async def lifespan(app):
     procs.tie_children_to_me()   # gravadores fecham junto com o programa (Windows)
+    procs.lower_my_priority()    # trabalho pesado com prioridade baixa: o PC continua liso
     # cortes que estavam sendo montados/refeitos quando o programa fechou: refaz agora (antes ficavam pela metade)
     for c in db.query("SELECT id, file_h, file_v FROM clips WHERE COALESCE(files_deleted,0)=0 AND "
                       "(rendering=1 OR (file_v IS NULL AND file_h IS NOT NULL))"):
@@ -75,6 +76,7 @@ async def lifespan(app):
         plog.debug("backfill do aprendizado falhou", exc_info=True)
     for ch in db.query("SELECT * FROM channels"):
         start_worker(ch)
+    vod.live_count = lambda: sum(1 for w in workers.values() if w.status == "gravando")
     vod.start()
     version.start_check()
     print("\n  Cortes ao Vivo rodando! Painel: http://localhost:8000")
@@ -251,9 +253,22 @@ def forget_vod(vid: int):
 
 
 # ------------------------------------------------------------ cortes
+CLIP_COLS = None
+
+
+def _clip_cols():
+    """Colunas que o painel usa (sem as grandes, como o tempo de cada palavra)."""
+    global CLIP_COLS
+    if CLIP_COLS is None:
+        have = [r["name"] for r in db.query("PRAGMA table_info(clips)")]
+        CLIP_COLS = ", ".join(c for c in have if c not in ("words", "features")) + \
+            ", (words IS NOT NULL) AS has_words_col"
+    return CLIP_COLS
+
+
 @app.get("/api/clips")
 def list_clips(status: str = "", channel: str = "", limit: int = 300):
-    sql, params = "SELECT * FROM clips WHERE 1=1", []
+    sql, params = f"SELECT {_clip_cols()} FROM clips WHERE 1=1", []
     if status:
         sql += " AND status=?"
         params.append(status)
@@ -264,8 +279,11 @@ def list_clips(status: str = "", channel: str = "", limit: int = 300):
     params.append(limit)
     rows = db.query(sql, params)
     now_id, q_ids = edit_queue()
+    pub = {}
     for c in rows:
-        c["rules"] = rules.public(c["channel_name"])
+        if c["channel_name"] not in pub:              # regras do campeonato: calcula uma vez por canal
+            pub[c["channel_name"]] = rules.public(c["channel_name"])
+        c["rules"] = pub[c["channel_name"]]
         c["ov_secs"] = settings.get("ov_secs")   # cortes feitos antes das tags do YouTube ganham as tags agora
         if not c.get("yt_tags"):
             c["yt_tags"] = meta.youtube_tags(c["channel_name"], c.get("platform") or "", c.get("cat") or "geral", c.get("subject"))
@@ -274,9 +292,7 @@ def list_clips(status: str = "", channel: str = "", limit: int = 300):
             c["queue_pos"] = 0 if c["id"] == now_id else (q_ids.index(c["id"]) + 1 if c["id"] in q_ids else None)
         et = effective_trim(c)                       # pedaço que vira o corte (pro editor)
         c["eff_ts"], c["eff_te"] = (et if et else (None, None))
-        c["has_words"] = bool(c.get("words"))
-        c.pop("words", None)
-        c.pop("features", None)
+        c["has_words"] = bool(c.pop("has_words_col", 0))
         c["posted_on"] = _js(c.get("posted_on"))
         c["views"] = _js(c.get("views"))
         if c.get("dup_of"):

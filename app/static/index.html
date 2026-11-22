@@ -545,7 +545,7 @@ function renderLives(){
       <div class="muted">${statusTxt[c.status] || c.status}${live && c.live_since ? " · " + elapsed(c.live_since) : ""} · ${c.clips} cortes</div>
       ${c.error ? `<div class="warn">${esc(c.error)}</div>` : ""}
       ${live ? `<div class="prevbox"><span>Carregando a imagem da live…<br>(aparece uns 20 segundos depois de começar a gravar)</span>
-          <img src="/api/channels/${c.id}/frame?b=${Math.floor(Date.now() / 6000)}" alt="Prévia da live gravando" onerror="this.remove()">
+          <img src="/api/channels/${c.id}/frame?b=${Math.floor(Date.now() / 20000)}" alt="Prévia da live gravando" onerror="this.remove()">
           <span class="tag">🔴 gravando vídeo + áudio · ${esc(c.quality || "qualidade original")}</span></div>
         <div class="chips">
           <span class="chip ok">🔊 Áudio</span>
@@ -624,7 +624,7 @@ async function flushSettings(){
 window.addEventListener("beforeunload", () => { if (Object.keys(pendingSet).length) navigator.sendBeacon?.("/api/settings", new Blob([JSON.stringify(pendingSet)], { type: "application/json" })); });
 function bindSettings(){
   if (settingsBound) return; settingsBound = true;
-  const fmt = { gap: v => `${v}s`, live_speech: v => v, vod_listen_all: v => v, vod_parallel: v => +v === 1 ? "1 (um de cada vez)" : +v === 3 ? "3 (só se o PC for forte)" : `${v}`, pad: v => +v === 0 ? "nenhuma" : `${v}s antes e ${v}s depois`, style: v => v, min_score: v => (+v).toFixed(1), discard_below: v => +v === 0 ? "nunca" : (+v).toFixed(1), dur: v => `${v}s (${Math.round(v * 2 / 3)}s antes do momento, ${v - Math.round(v * 2 / 3)}s depois)`, vod_max: v => v, ov_secs: v => +v > 40 ? "o vídeo todo" : v + "s" };
+  const fmt = { gap: v => `${v}s`, live_speech: v => v, vod_listen_all: v => v, vod_parallel: v => (+v === 1 ? "1 (um de cada vez)" : +v === 3 ? "3 (só se o PC for forte)" : `${v}`) + (+v > 1 ? " · com live gravando: 1" : ""), pad: v => +v === 0 ? "nenhuma" : `${v}s antes e ${v}s depois`, style: v => v, min_score: v => (+v).toFixed(1), discard_below: v => +v === 0 ? "nunca" : (+v).toFixed(1), dur: v => `${v}s (${Math.round(v * 2 / 3)}s antes do momento, ${v - Math.round(v * 2 / 3)}s depois)`, vod_max: v => v, ov_secs: v => +v > 40 ? "o vídeo todo" : v + "s" };
   for (const id of ["min_score", "discard_below", "dur", "vod_max", "ov_secs", "ov_on", "tags", "audio_mode", "posted_cleanup", "pad", "style", "vod_parallel", "gap", "live_speech", "vod_listen_all"]){
     const el = $("#" + id), out = el.parentElement.querySelector("output"), val = ST.settings[id];
     if (el.type === "checkbox") el.checked = !!val; else el.value = val;
@@ -1289,8 +1289,15 @@ setInterval(() => { if (CMP.items.some(x => x.status !== "pronto" && x.status !=
 
 /* ------------------------------------------------------------ início */
 loadState().then(() => { loadClips(true); loadStorage(); loadInsights(); loadLikes(); loadCompile().catch(() => {}); }).catch(e => toast("Não conectou no programa: " + e.message, 8000));
-setInterval(() => loadState().catch(() => {}), 3000);
-setInterval(() => loadClips().catch(() => {}), 5000);
+// com a aba escondida (minimizada / outra aba), o painel atualiza bem menos: não gasta o PC à toa
+let tick = 0;
+setInterval(() => {
+  tick++;
+  if (document.hidden && tick % 10) return;
+  loadState().catch(() => {});
+  if (tick % 2 === 0) loadClips().catch(() => {});
+}, 3000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden){ loadState().catch(() => {}); loadClips().catch(() => {}); } });
 </script>
 </body>
 </html>

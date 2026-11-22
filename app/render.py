@@ -18,6 +18,8 @@ from PIL import Image, ImageDraw, ImageFont
 log = logging.getLogger("render")
 W, H = 1080, 1920
 NO_WINDOW = 0x08000000 if os.name == "nt" else 0  # não abre janelas pretas no Windows
+# gravação das lives: prioridade normal (o resto do programa roda com prioridade baixa pra não pesar o PC)
+REC_FLAGS = NO_WINDOW | (0x00000020 if os.name == "nt" else 0)   # NORMAL_PRIORITY_CLASS
 
 
 def run(cmd, **kw):

@@ -57,6 +57,23 @@ def tie_children_to_me():
         log.debug("não deu pra ligar os gravadores ao programa: %s", e)
 
 
+def lower_my_priority():
+    """
+    O programa (ouvir a fala, montar os vídeos) roda com prioridade BAIXA no Windows: usa só a sobra do processador,
+    e o PC continua liso pra você. A gravação das lives é aberta com prioridade normal (não perde nada).
+    """
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        k32.GetCurrentProcess.restype = ctypes.c_void_p
+        k32.SetPriorityClass.argtypes = (ctypes.c_void_p, ctypes.c_uint32)
+        k32.SetPriorityClass(k32.GetCurrentProcess(), 0x00004000)     # BELOW_NORMAL_PRIORITY_CLASS
+    except Exception as e:
+        log.debug("não deu pra baixar a prioridade: %s", e)
+
+
 def safe_unlink(path):
     """Apaga sem quebrar se o Windows disser que o arquivo está em uso."""
     try:

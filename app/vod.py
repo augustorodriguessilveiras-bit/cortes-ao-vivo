@@ -28,11 +28,20 @@ _stop_ids = set()
 MAX_PARALLEL = 3
 
 
+live_count = lambda: 0       # o painel troca por quantas lives estão gravando agora
+
+
 def _limit():
     try:
-        return max(1, min(MAX_PARALLEL, int(settings.get("vod_parallel"))))
+        n = max(1, min(MAX_PARALLEL, int(settings.get("vod_parallel"))))
     except Exception:
-        return 2
+        n = 2
+    try:
+        if live_count() > 0:      # tem live gravando: 1 VOD por vez, pra live e a fala dela não atrasarem
+            n = 1
+    except Exception:
+        pass
+    return n
 
 
 def _mark_queue():
