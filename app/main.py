@@ -591,12 +591,18 @@ def set_theme(clip_id: int, body: ThemeIn):
     if body.theme == "futebol" and c.get("theme") != "futebol" and c.get("file_h") and not c.get("files_deleted"):
         # futebol: corte mais longo, usando a sobra guardada (a jogada antes + a reação depois)
         try:
-            hdur = render.probe(C.CLIPS_DIR / c["file_h"])[2]
-            before, after, _ = settings.window("futebol")
+            hpath = C.CLIPS_DIR / c["file_h"]
+            hdur = render.probe(hpath)[2]
             peak = c.get("peak_rel")
             if peak is None:
                 peak = ((c.get("core_start") or 0) + (c.get("core_end") or hdur)) / 2
-            ts, te = max(0.0, peak - before), min(hdur, peak + after)
+            from .recorder import _levels_db
+            from . import smart as _smart
+            words = json.loads(c["words"]) if c.get("words") else None
+            sw = _smart.fut_window(_smart.group_words(words) if words else [], _levels_db(hpath), peak, hdur,
+                                   settings.get("dur_futebol"))
+            before, after, _ = settings.window("futebol")
+            ts, te = sw if sw else (max(0.0, peak - before), min(hdur, peak + after))
             if te - ts > ((c.get("core_end") or hdur) - (c.get("core_start") or 0)) + 5:
                 data.update(trim_start=round(ts, 2), trim_end=round(te, 2), rendering=1, warn=None)
                 data["longer"] = round(te - ts)
@@ -776,7 +782,7 @@ def _process_upload(raw, name, platform, theme):
             "layout": "full" if vh / max(1, vw) > 1.2 else "auto",
             "features": _json.dumps(q["features"]) if q["features"] else None,
             "signal_score": q["signal"], "content_score": q["content"], **m,
-            **extra_fields(h, 0.0, dur, None, lines, words)})
+            **extra_fields(h, 0.0, dur, None, lines, words, theme)})
         after_insert(clip_id)
         plog.info("📤 Seu corte de %s está pronto no painel.", name)
     except Exception as e:

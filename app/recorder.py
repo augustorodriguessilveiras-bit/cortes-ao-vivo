@@ -105,12 +105,26 @@ def listen(h, cs, ce):
     return lines, core, words
 
 
-def extra_fields(h, cs, ce, peak, lines, words):
+def _levels_db(h):
+    import math
+    return [20 * math.log10(x + 1e-6) for x in render.second_levels(h)]
+
+
+def extra_fields(h, cs, ce, peak, lines, words, theme=None):
     """Campos novos do corte: onde está o corte dentro do vídeo guardado, começo/fim esperto e as palavras."""
     _, _, hdur = render.probe(h)
     ce = min(ce, hdur) if hdur else ce
     out = {"core_start": round(cs, 2), "core_end": round(ce, 2), "peak_rel": round(peak, 2) if peak is not None else None,
            "style": settings.get("style"), "words": json.dumps(words) if words else None}
+    if theme == "futebol" and peak is not None:
+        # futebol: começo e fim naturais (a jogada + a reação), cada corte com um tamanho
+        try:
+            sw = smart.fut_window(lines, _levels_db(h), peak, hdur or ce, settings.get("dur_futebol"))
+        except Exception:
+            sw = None
+        if sw:
+            out.update(smart_start=sw[0], smart_end=sw[1])
+        return out
     sw = smart.smart_window(lines, peak, hdur or ce, max_len=max(20.0, ce - cs)) if lines else None
     if sw:
         out.update(smart_start=sw[0], smart_end=sw[1])
@@ -132,7 +146,7 @@ def effective_trim(c):
     """Pedaço do vídeo guardado que vira o corte: o que você escolheu no editor > começo/fim esperto > o corte normal."""
     if c.get("trim_start") is not None or c.get("trim_end") is not None:
         return c.get("trim_start"), c.get("trim_end")
-    if (c.get("style") == "dinamico") and c.get("smart_start") is not None:
+    if (c.get("style") == "dinamico" or c.get("theme") == "futebol") and c.get("smart_start") is not None:
         return c["smart_start"], c["smart_end"]
     if c.get("core_start") is not None:
         return c["core_start"], c["core_end"]
@@ -665,7 +679,7 @@ class ChannelWorker(threading.Thread):
                 "platform": self.platform, "url": self.url, "cam": cam, "rendering": 1, "source": "live",
                 "features": json.dumps(q["features"]) if q["features"] else None,
                 "signal_score": q["signal"], "content_score": q["content"], **m,
-                **extra_fields(h, cs, ce, job["peak"] - start, spoken, words)})
+                **extra_fields(h, cs, ce, job["peak"] - start, spoken, words, m.get("theme"))})
             self.stats["cortes"] += 1
             after_insert(clip_id)
             log.info("✂ corte pronto: %s (nota %.1f)", name, q["final"])

@@ -399,7 +399,7 @@ def _process(vod_id):
             "platform": v["platform"], "url": channel_url, "cam": cam, "rendering": 1,
             "source": "vod", "vod_id": vod_id, "features": json.dumps(q["features"]) if q["features"] else None,
             "signal_score": q["signal"], "content_score": q["content"], **m,
-            **extra_fields(h, cs, ce, t - start, lines, words)})
+            **extra_fields(h, cs, ce, t - start, lines, words, theme)})
         after_insert(clip_id)
         log.info("✂ corte %d de %d do VOD de %s pronto", i, len(peaks), name)
     _set(vod_id, status=f"pronto: {len(peaks)} cortes", progress=1)

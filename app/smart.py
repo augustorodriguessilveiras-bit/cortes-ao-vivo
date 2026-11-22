@@ -52,6 +52,60 @@ def smart_window(lines, peak, h_dur, max_len=60.0):
     return round(start, 2), round(end, 2)
 
 
+def fut_window(lines, levels, peak, h_dur, target=120.0):
+    """
+    Corte de futebol com começo e fim naturais (não um tempo cravado):
+      - começo: início de uma frase (ou um momento mais calmo) de 45 a 90 s antes do lance, pra pegar a jogada
+      - fim: quando a reação acaba (pausa na fala ou o som volta ao normal), de 20 a 70 s depois do lance
+    lines: [(início, fim, frase)] · levels: volume (dB) de cada segundo do vídeo guardado · tudo no tempo do vídeo.
+    Retorna (início, fim) entre ~1min20 e 2min45, ou None.
+    """
+    if peak is None:
+        return None
+    lines = sorted(lines or [])
+    lo_b, hi_b = max(45.0, target * 0.38), min(90.0, target * 0.75)
+    want_b = target * 0.6
+    start = None
+    best = 1e9
+    for i, (s, e, _) in enumerate(lines):           # início de frase depois de uma pausa
+        if peak - hi_b <= s <= peak - lo_b:
+            gap = s - lines[i - 1][1] if i else 9.0
+            cost = abs((peak - s) - want_b) - (8 if gap >= 0.8 else 0)
+            if cost < best:
+                start, best = s - 0.3, cost
+    if start is None and levels:                     # sem fala: o segundo mais calmo antes da jogada
+        a, b = int(max(0, peak - hi_b)), int(max(0, peak - lo_b))
+        if b > a:
+            seg = list(levels[a:b])
+            start = a + seg.index(min(seg))
+    if start is None:
+        start = peak - want_b
+    end = None
+    for i, (s, e, _) in enumerate(lines):            # a reação acabou: pausa depois de falar
+        if e < peak + 20 or e > peak + 70:
+            continue
+        nxt = lines[i + 1][0] if i + 1 < len(lines) else h_dur
+        if nxt - e >= 1.5:
+            end = e + 0.8
+            break
+    if end is None and levels:                       # sem fala: quando o som volta ao normal depois do lance
+        import statistics
+        base = statistics.median(levels) if levels else 0
+        for t in range(int(peak + 20), int(min(len(levels) - 2, peak + 70))):
+            if levels[t] <= base and levels[t + 1] <= base:
+                end = t + 1.5
+                break
+    if end is None:
+        end = peak + (target - want_b)
+    start, end = max(0.0, start), min(h_dur, end)
+    if end - start < 80:                             # curto demais: completa dos dois lados
+        falta = 80 - (end - start)
+        start, end = max(0.0, start - falta / 2), min(h_dur, end + falta / 2)
+    if end - start > 165:
+        end = start + 165
+    return round(start, 2), round(end, 2)
+
+
 def group_words(words, gap=0.6):
     """Junta as palavras em frases (quando não tem as frases guardadas)."""
     out, cur = [], []
