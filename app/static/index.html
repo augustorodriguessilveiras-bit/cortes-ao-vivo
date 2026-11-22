@@ -217,7 +217,7 @@ details.meta[open] summary{margin-bottom:6px}
       <input type="text" id="tcUrl" placeholder="Link do VOD (kick.com/nome/videos/…, twitch.tv/videos/…, youtube.com/watch?v=…)" autocomplete="off">
       <input type="text" id="tcFrom" placeholder="De (ex: 3:13:00)" autocomplete="off" style="max-width:140px;min-width:110px;flex:0 1 140px">
       <input type="text" id="tcTo" placeholder="Até (ex: 3:15:00)" autocomplete="off" style="max-width:140px;min-width:110px;flex:0 1 140px">
-      <select id="tcCount"><option value="1">1 corte (o trecho todo)</option><option value="3">Até 3 cortes (os melhores momentos do trecho)</option></select>
+      <select id="tcCount"><option value="1">1 corte (o trecho todo)</option><option value="0">Vários cortes (todos os momentos bons do trecho)</option></select>
       <select id="tcTheme"><option value="auto">Tema: automático</option><option value="gta">GTA</option><option value="react">React / outros</option></select>
       <button class="primary" id="tcBtn">✂ Cortar esse trecho</button>
     </div>
@@ -233,6 +233,7 @@ details.meta[open] summary{margin-bottom:6px}
     <label>Duração do corte <input type="range" id="dur" min="20" max="90" step="5"><output></output></label>
     <label>Intervalo mínimo entre cortes <input type="range" id="gap" min="15" max="180" step="5"><output></output></label>
     <label><input type="checkbox" id="live_speech"> Ouvir a fala das lives pra achar mais momentos</label>
+    <label><input type="checkbox" id="vod_listen_all"> Ouvir a fala do VOD inteiro (mais preciso, demora mais)</label>
     <label>Máx. cortes por VOD <input type="range" id="vod_max" min="3" max="40" step="1"><output></output></label>
     <label>VODs ao mesmo tempo <input type="range" id="vod_parallel" min="1" max="3" step="1"><output></output></label>
     <label><input type="checkbox" id="ov_on"> Título dentro do vídeo</label>
@@ -466,7 +467,12 @@ function tcCheck(){
   if (a == null || b == null){ el.textContent = ($("#tcFrom").value || $("#tcTo").value) && (a == null && $("#tcFrom").value || b == null && $("#tcTo").value) ? "⚠ Escreva o tempo assim: 3:13:00 (horas:minutos:segundos)." : ""; return null; }
   if (b <= a){ el.textContent = "⚠ O fim tem que ser depois do começo."; return null; }
   const d = b - a, many = $("#tcCount").value !== "1", L = +(ST.settings.dur || 60);
-  if (many){ el.textContent = `Trecho de ${fmtHMS(d)} (de ${fmtHMS(a)} até ${fmtHMS(b)}). ` + (d < L * 1.6 ? `Trecho curto: sai 1 corte só (o trecho todo).` : `Vão sair até 3 cortes de ${L}s cada, nos momentos mais fortes.`); return [a, b]; }
+  if (many){
+    if (d < 120){ el.textContent = `⚠ Trecho de ${fmtHMS(d)}: pra "Vários cortes" precisa de pelo menos 2 minutos. Pra um momento curto, escolha "1 corte".`; return null; }
+    el.textContent = `Trecho de ${fmtHMS(d)} (de ${fmtHMS(a)} até ${fmtHMS(b)}). O programa ouve só esse pedaço e faz quantos cortes de ${L}s tiver de bom (pode ser 1, pode ser 20). Aparece em VODs, com o andamento.`;
+    return [a, b];
+  }
+  if (d > 900){ el.textContent = `⚠ Trecho de ${fmtHMS(d)}: grande demais pra 1 corte só (máx. 15 min). Escolha "Vários cortes" que o programa acha os melhores momentos dentro dele.`; return null; }
   el.textContent = `Trecho de ${fmtHMS(d)} (de ${fmtHMS(a)} até ${fmtHMS(b)}).` + (d > 180 ? " ⚠ Passa de 3 min: o Shorts não aceita, e no TikTok/Reels corte longo costuma ter menos view." : d > 90 ? " Dica: cortes de até 1 min costumam ir melhor." : "");
   return [a, b];
 }
@@ -477,7 +483,10 @@ $("#tcBtn").addEventListener("click", async () => {
   const btn = $("#tcBtn"); btn.disabled = true;
   try {
     await post("/api/vodclip", { url, start: $("#tcFrom").value, end: $("#tcTo").value, theme: $("#tcTheme").value, count: +$("#tcCount").value });
-    $("#tcInfo").textContent = "✅ Baixando só esse pedaço do VOD e montando o corte… acompanhe em \"O que está acontecendo agora\". Em alguns minutos ele aparece em Cortes → Novos.";
+    $("#tcInfo").textContent = $("#tcCount").value === "1"
+      ? "✅ Baixando só esse pedaço do VOD e montando o corte… acompanhe em \"O que está acontecendo agora\". Em alguns minutos ele aparece em Cortes → Novos."
+      : "✅ Procurando os momentos bons do trecho… o andamento aparece lá em cima, em VODs. Os cortes vão aparecendo em Cortes → Novos.";
+    loadState();
     $("#tcFrom").value = ""; $("#tcTo").value = "";
     toast("Trecho enviado! Já já ele aparece na lista.");
   } catch (e) { toast(e.message, 8000); }
@@ -560,6 +569,7 @@ function renderLives(){
     return `<div class="card">
       <div class="row between"><span class="name">${esc(v.name)}</span><span class="badge ${v.platform}">${v.platform}</span></div>
       ${v.title ? `<div class="muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(v.title)}</div>` : ""}
+      ${v.range_end ? `<div class="fmt">✂ Só o trecho de ${fmtHMS(v.range_start || 0)} até ${fmtHMS(v.range_end)}</div>` : ""}
       <div class="${v.status === "erro" ? "warn" : "muted"}">${esc(v.status)} · ${v.clips} cortes</div>
       ${v.error ? `<div class="warn">${esc(v.error)}</div>` : ""}
       ${done ? "" : `<div class="meter prog"><i style="width:${Math.round(v.progress * 100)}%"></i></div>`}
@@ -614,8 +624,8 @@ async function flushSettings(){
 window.addEventListener("beforeunload", () => { if (Object.keys(pendingSet).length) navigator.sendBeacon?.("/api/settings", new Blob([JSON.stringify(pendingSet)], { type: "application/json" })); });
 function bindSettings(){
   if (settingsBound) return; settingsBound = true;
-  const fmt = { gap: v => `${v}s`, live_speech: v => v, vod_parallel: v => +v === 1 ? "1 (um de cada vez)" : +v === 3 ? "3 (só se o PC for forte)" : `${v}`, pad: v => +v === 0 ? "nenhuma" : `${v}s antes e ${v}s depois`, style: v => v, min_score: v => (+v).toFixed(1), discard_below: v => +v === 0 ? "nunca" : (+v).toFixed(1), dur: v => `${v}s (${Math.round(v * 2 / 3)}s antes do momento, ${v - Math.round(v * 2 / 3)}s depois)`, vod_max: v => v, ov_secs: v => +v > 40 ? "o vídeo todo" : v + "s" };
-  for (const id of ["min_score", "discard_below", "dur", "vod_max", "ov_secs", "ov_on", "tags", "audio_mode", "posted_cleanup", "pad", "style", "vod_parallel", "gap", "live_speech"]){
+  const fmt = { gap: v => `${v}s`, live_speech: v => v, vod_listen_all: v => v, vod_parallel: v => +v === 1 ? "1 (um de cada vez)" : +v === 3 ? "3 (só se o PC for forte)" : `${v}`, pad: v => +v === 0 ? "nenhuma" : `${v}s antes e ${v}s depois`, style: v => v, min_score: v => (+v).toFixed(1), discard_below: v => +v === 0 ? "nunca" : (+v).toFixed(1), dur: v => `${v}s (${Math.round(v * 2 / 3)}s antes do momento, ${v - Math.round(v * 2 / 3)}s depois)`, vod_max: v => v, ov_secs: v => +v > 40 ? "o vídeo todo" : v + "s" };
+  for (const id of ["min_score", "discard_below", "dur", "vod_max", "ov_secs", "ov_on", "tags", "audio_mode", "posted_cleanup", "pad", "style", "vod_parallel", "gap", "live_speech", "vod_listen_all"]){
     const el = $("#" + id), out = el.parentElement.querySelector("output"), val = ST.settings[id];
     if (el.type === "checkbox") el.checked = !!val; else el.value = val;
     if (out) out.textContent = fmt[id](val);

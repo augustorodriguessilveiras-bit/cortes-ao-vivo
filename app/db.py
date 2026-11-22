@@ -49,6 +49,7 @@ with _lock:
     # colunas novas (bancos de versões antigas ganham elas sozinhos)
     NEW = {
         "channels": {"cam": "TEXT"},
+        "vods": {"range_start": "REAL", "range_end": "REAL"},     # trecho escolhido (de/até) dentro do VOD
         "clips": {"platform": "TEXT", "url": "TEXT", "cam": "TEXT", "cat": "TEXT", "subject": "TEXT",
                   "title": "TEXT", "title_idx": "INTEGER DEFAULT 0", "descr": "TEXT", "tags": "TEXT",
                   "chat_top": "TEXT", "overlay": "TEXT", "warn": "TEXT", "rendering": "INTEGER DEFAULT 0",

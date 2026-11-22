@@ -9,6 +9,7 @@ DEFAULTS = {
     "dur": 60,                         # duração total do corte (segundos); 2/3 antes do pico, 1/3 depois
     "gap": 40,                         # intervalo mínimo entre um momento e outro da mesma live (segundos)
     "live_speech": True,               # ouve a fala das lives o tempo todo pra achar reação sem grito
+    "vod_listen_all": True,            # ouve a fala do VOD inteiro (mais preciso, demora mais)
     "ov_on": True,                     # faixa branca com título dentro do vídeo
     "ov_secs": 10,                     # por quantos segundos (41 = vídeo todo)
     "tags": "#gta6 #gtavi #gta #gta6brasil #cortes #cortesdelive #fyp #viral",

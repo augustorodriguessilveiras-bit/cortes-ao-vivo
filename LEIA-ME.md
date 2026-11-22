@@ -140,12 +140,15 @@ Instale nos dois PCs do mesmo jeito: Python, extrair o zip e `INICIAR.bat`.
 - **♻ Corte repetido:** se o mesmo momento for cortado duas vezes (ex: da live e do VOD), o cartão avisa.
 - **🎬 Compilado pro YouTube:** junta cortes aprovados num vídeo deitado com o título de cada momento e os capítulos
   prontos pra descrição.
+- **VOD ouvido inteiro** (Ajustes, ligado por padrão): além dos picos de som, o programa ouve tudo o que o
+  streamer fala no VOD e acha reação sem grito. Mais preciso, demora mais. Se fechar no meio, continua de onde parou.
 - **Fila dos VODs:** 2 VODs são feitos ao mesmo tempo (muda em Ajustes: 1 a 3). Nos que estão esperando aparece
   ⏫ Passar na frente. Trecho de VOD por tempo e corte enviado têm fila própria e não esperam os VODs.
 - **📤 Enviar um corte seu:** manda um trecho que você cortou e ele sai no mesmo formato dos automáticos.
 - **✂ Cortar um trecho de VOD:** cole o link do vídeo da live e o tempo (ex: de 3:13:00 até 3:15:00). O programa
   baixa só esse pedaço, com a sobra antes e depois, e monta o corte no mesmo estilo. Escolha "1 corte" (o trecho
-  todo) ou "Até 3 cortes" (os momentos mais fortes do trecho). Link com tempo (ex: ...?t=3h13m) colado na caixa de
+  todo, até 15 min) ou "Vários cortes": o trecho pode ter 20 min, 1 hora, 3 horas; o programa ouve só esse pedaço
+  e faz quantos cortes tiver de bom dentro dele (aparece em VODs, com o andamento). Link com tempo (ex: ...?t=3h13m) colado na caixa de
   cima vai direto pra cá, em vez de processar o VOD inteiro.
 
 ## Regras por streamer (campeonatos)

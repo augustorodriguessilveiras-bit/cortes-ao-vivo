@@ -245,6 +245,7 @@ def remove_vod(vid: int):
 @app.delete("/api/vods/{vid}/forget")
 def forget_vod(vid: int):
     vod.cancel(vid)
+    vod.forget_cache(vid)
     db.execute("DELETE FROM vods WHERE id=?", (vid,))
     return {"ok": True}
 
@@ -888,8 +889,13 @@ def vod_clip(body: VodClipIn):
         raise HTTPException(400, "O fim tem que ser depois do começo.")
     if b - a < 3:
         raise HTTPException(400, "O trecho ficou curto demais (menos de 3 segundos).")
-    if b - a > 15 * 60:
-        raise HTTPException(400, "Trecho muito longo. O máximo é 15 minutos.")
+    many = body.count != 1
+    if not many and b - a > 15 * 60:
+        raise HTTPException(400, "Trecho muito longo pra 1 corte só (máximo 15 minutos). Pra um pedaço grande, "
+                                 "escolha \"Vários cortes\" que o programa acha os melhores momentos dentro dele.")
+    if many and b - a < 120:
+        raise HTTPException(400, "Pra \"Vários cortes\", o trecho precisa ter pelo menos 2 minutos. "
+                                 "Pra um momento curto, escolha \"1 corte\".")
     url = body.url.strip()
     if not url:
         raise HTTPException(400, "Cole o link do VOD.")
@@ -897,7 +903,16 @@ def vod_clip(body: VodClipIn):
     if kind != "vod":
         raise HTTPException(400, "Esse link é de um canal. Cole o link do VÍDEO da live que já passou "
                                  "(ex: kick.com/nome/videos/..., twitch.tv/videos/... ou youtube.com/watch?v=...).")
-    MANUAL_POOL.submit(_process_vodclip, url, a, b, body.theme, max(1, min(3, body.count)))
+    if many:
+        # vários cortes: funciona igual ao VOD completo, só que dentro do trecho (ouve só ele, baixa só os cortes)
+        nurl, name, plat, _ = sources.parse_link(url)
+        vid = db.insert("vods", {"url": nurl, "name": name, "platform": plat, "added_at": time.time(),
+                                 "range_start": a, "range_end": b, "title": f"Trecho {_fmt_t(a)} até {_fmt_t(b)}"})
+        vod.enqueue(vid)
+        vod.to_front(vid)                       # você pediu agora: passa na frente dos VODs completos
+        plog.info("✂ Procurando os melhores momentos do trecho %s até %s do VOD…", _fmt_t(a), _fmt_t(b))
+        return {"ok": True, "dur": b - a, "vod": vid}
+    MANUAL_POOL.submit(_process_vodclip, url, a, b, body.theme, 1)
     plog.info("✂ Baixando o trecho %s até %s do VOD… (só esse pedaço, com a sobra)", _fmt_t(a), _fmt_t(b))
     return {"ok": True, "dur": b - a}
 
