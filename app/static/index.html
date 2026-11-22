@@ -170,6 +170,13 @@ details.meta[open] summary{margin-bottom:6px}
 #edText{width:100%;min-height:60px;font-weight:700;text-transform:uppercase;font-size:14px;padding:8px 10px;border-radius:8px;background:var(--bg)}
 #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);padding:10px 16px;border-radius:10px;opacity:0;transition:opacity .3s;pointer-events:none;max-width:90vw;z-index:60}
 #toast.show{opacity:1}
+@font-face{font-family:"CortesAnton";src:url("/fonts/Anton-Regular.ttf")}
+@font-face{font-family:"CortesArchivo";src:url("/fonts/ArchivoBlack-Regular.ttf")}
+@font-face{font-family:"CortesBangers";src:url("/fonts/Bangers-Regular.ttf")}
+@font-face{font-family:"CortesLuckiest";src:url("/fonts/LuckiestGuy-Regular.ttf")}
+@font-face{font-family:"CortesBebas";src:url("/fonts/BebasNeue-Regular.ttf")}
+.stysel{display:flex;gap:8px;flex-wrap:wrap}
+.stysel select{max-width:100%}
 </style>
 </head>
 <body>
@@ -243,6 +250,9 @@ details.meta[open] summary{margin-bottom:6px}
     <label>Volume do áudio <select id="audio_mode"><option value="auto">Automático (só mexe se estiver muito baixo ou estourando)</option><option value="off">Original da live (nunca mexer)</option></select></label>
     <label>Sobra guardada antes e depois do corte <input type="range" id="pad" min="0" max="60" step="5"><output></output></label>
     <label>Estilo dos cortes novos <select id="style"><option value="padrao">Padrão (como sempre foi)</option><option value="dinamico">✨ Dinâmico (zoom na reação e começo/fim no ponto certo)</option></select></label>
+    <label>Cores do título <select id="cap_style"></select></label>
+    <label>Letra do título <select id="cap_font"></select></label>
+    <label>Marca d'água <select id="wm_style"></select></label>
     <label class="wide">Hashtags padrão <input type="text" id="tags"></label>
   </div>
   <p class="muted">Muito corte ruim? Aumente a nota mínima. Poucos cortes? Diminua.</p>
@@ -351,8 +361,12 @@ details.meta[open] summary{margin-bottom:6px}
         <div class="edrow"><button class="small" id="edCaNow">Aparecer a partir daqui</button><button class="small" id="edCbNow">Sumir aqui</button><button class="small" id="edCapAll">O corte todo</button></div>
         <div class="edrow">Lugar do texto: <button class="small" data-capy="0.12">Em cima</button><button class="small" data-capy="def">Padrão</button><button class="small" data-capy="0.5">Meio</button><button class="small" data-capy="0.86">Embaixo</button></div>
 
+        <h3>🎨 Cores e letra do título</h3>
+        <div class="stysel"><select id="edCapStyle" aria-label="Cores do título"></select><select id="edCapFont" aria-label="Letra do título"></select></div>
+
         <div id="edWmBox">
           <h3>💧 Marca d'água</h3>
+          <div class="stysel"><select id="edWmStyle" aria-label="Estilo da marca d'água"></select></div>
           <div class="edrow">Lugar: <button class="small" data-wmy="0.06">Em cima</button><button class="small" data-wmy="0.5">Meio</button><button class="small" data-wmy="0.8">Padrão (embaixo)</button><button class="small" data-wmy="0.93">Bem embaixo</button></div>
         </div>
 
@@ -384,11 +398,21 @@ let ST = { channels: [], vods: [], settings: {} }, clips = [], filt = { status: 
 
 /* ------------------------------------------------------------ desenho do vertical (só pra prévia; o vídeo de verdade é feito pelo ffmpeg) */
 function coverCrop(sx, sy, sw, sh, dw, dh){ const ar = dw / dh; let w = sw, h = sw / ar; if (h > sh){ h = sh; w = sh * ar; } return [sx + (sw - w) / 2, sy + (sh - h) / 2, w, h]; }
-function drawCaption(ctx, text, W, yCenter, alpha = 1, H = Infinity){
-  text = (text || "").replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}]/gu, "").replace(/\s+/g, " ").trim().toUpperCase();
+const FONT_CSS = { classica: '"Arial Black","Segoe UI Black",Arial,sans-serif', anton: '"CortesAnton",Impact,sans-serif',
+  archivo: '"CortesArchivo","Arial Black",sans-serif', bangers: '"CortesBangers",Impact,sans-serif',
+  luckiest: '"CortesLuckiest","Arial Black",sans-serif', bebas: '"CortesBebas",Impact,sans-serif' };
+const cleanTxt = t => (t || "").replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}]/gu, "").replace(/[^\p{L}\p{N}\s.,!?:;'"()\-\/@#%&+*_]/gu, "").replace(/\s+/g, " ").trim();
+// estilo da faixa: { bg, fg, font }. Sem bg = sem faixa, letra com contorno
+function capStyle(sty){
+  const S = (ST.styles || {}).cap || {}, k = sty && sty.cap, st = S[k] || { bg: "#ffffff", fg: "#000000" };
+  return { bg: st.bg, fg: st.fg, font: (sty && sty.font) || "classica" };
+}
+function drawCaption(ctx, text, W, yCenter, alpha = 1, H = Infinity, sty = null){
+  text = cleanTxt(text).toUpperCase();
   if (!text) return null;
-  const font = n => `900 ${n}px "Arial Black","Segoe UI Black",Arial,sans-serif`, maxW = W * 0.92;
-  let size = Math.round(W * 0.056), lines = [];
+  const cs = capStyle(sty), fam = FONT_CSS[cs.font] || FONT_CSS.classica, big = cs.font === "anton" || cs.font === "bebas";
+  const font = n => `${cs.font === "classica" ? "900 " : ""}${n}px ${fam}`, maxW = W * 0.92;
+  let size = Math.round(W * (big ? 0.066 : 0.056)), lines = [];
   const wrap = () => { ctx.font = font(size); lines = []; let cur = "";
     for (const w of text.split(" ")){ const t = cur ? cur + " " + w : w; if (ctx.measureText(t).width <= maxW || !cur) cur = t; else { lines.push(cur); cur = w; } }
     if (cur) lines.push(cur); };
@@ -396,21 +420,29 @@ function drawCaption(ctx, text, W, yCenter, alpha = 1, H = Infinity){
   const lh = size * 1.18, pad = size * 0.55, bh = lh * lines.length + pad * 2;
   const top = Math.max(0, Math.min(H - bh, yCenter - bh / 2));
   ctx.save(); ctx.globalAlpha = alpha;
-  ctx.fillStyle = "#fff"; ctx.fillRect(0, top, W, bh);
-  ctx.fillStyle = "#000"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  lines.forEach((l, i) => ctx.fillText(l, W / 2, top + pad + lh * (i + 0.5)));
+  if (cs.bg){ ctx.fillStyle = cs.bg; ctx.fillRect(0, top, W, bh); }
+  ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.font = font(size);
+  lines.forEach((l, i) => {
+    const y = top + pad + lh * (i + 0.5);
+    if (!cs.bg){ ctx.lineJoin = "round"; ctx.lineWidth = Math.max(3, size / 4); ctx.strokeStyle = "#000"; ctx.strokeText(l, W / 2, y); }
+    ctx.fillStyle = cs.fg; ctx.fillText(l, W / 2, y);
+  });
   ctx.restore();
   return { x: 0, y: top, w: W, h: bh };
 }
 // Selo da marca d'água (mesmo tamanho do vídeo final: 5,2% da largura)
-function drawWatermark(ctx, text, W, H, xc, yc){
+function drawWatermark(ctx, text, W, H, xc, yc, wmKey){
+  const st = ((ST.styles || {}).wm || {})[wmKey] || { bg: "rgba(0,0,0,.65)", fg: "#ffffff", font: "classica" };
+  if (st.upper) text = text.toUpperCase();
   const size = Math.max(10, Math.round(W * 0.052));
-  ctx.save(); ctx.font = `700 ${size}px "Segoe UI",Arial,sans-serif`;
+  ctx.save(); ctx.font = st.font === "classica" ? `700 ${size}px "Segoe UI",Arial,sans-serif` : `${size}px ${FONT_CSS[st.font] || FONT_CSS.classica}`;
   const tw = ctx.measureText(text).width, padX = size * 0.7, padY = size * 0.38;
   const w = tw + padX * 2, h = size * 1.2 + padY * 2;
   const x = Math.max(0, Math.min(W - w, xc - w / 2)), y = Math.max(0, Math.min(H - h, yc - h / 2));
-  ctx.fillStyle = "rgba(0,0,0,.65)"; ctx.beginPath(); ctx.roundRect(x, y, w, h, h / 2); ctx.fill();
-  ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(text, x + w / 2, y + h / 2);
+  if (st.bg){ ctx.fillStyle = st.bg; ctx.beginPath(); ctx.roundRect(x, y, w, h, st.font === "classica" ? h / 2 : Math.max(3, h / 5)); ctx.fill(); }
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  if (!st.bg){ ctx.lineJoin = "round"; ctx.lineWidth = Math.max(2, size / 4); ctx.strokeStyle = "#000"; ctx.strokeText(text, x + w / 2, y + h / 2); }
+  ctx.fillStyle = st.fg; ctx.fillText(text, x + w / 2, y + h / 2);
   ctx.restore();
   return { x, y, w, h };
 }
@@ -442,14 +474,14 @@ function drawVertical(ctx, img, vw, vh, cam, W, H, caption, layout, opts = {}){
       yDef = (H - fitH) / 2;
     }
   }
-  const capRect = drawCaption(ctx, caption, W, opts.capY != null ? opts.capY * H : yDef, opts.capAlpha ?? 1, H);
+  const capRect = drawCaption(ctx, caption, W, opts.capY != null ? opts.capY * H : yDef, opts.capAlpha ?? 1, H, opts.sty);
   let wmRect = null;
   if (opts.wm && opts.wm.img){        // Lower do campeonato, já sem fundo (mesmo tamanho do vídeo final)
     const im = opts.wm.img, iw = im.naturalWidth || im.width, ih = im.naturalHeight || im.height;
     const w = W * (opts.wm.wf ?? 0.86), h = w * ih / iw;
     const x = Math.max(0, Math.min(W - w, opts.wm.x * W - w / 2)), y = Math.max(0, Math.min(H - h, opts.wm.y * H - h / 2));
     ctx.drawImage(im, x, y, w, h); wmRect = { x, y, w, h };
-  } else if (opts.wm && opts.wm.text) wmRect = drawWatermark(ctx, opts.wm.text, W, H, (opts.wm.x ?? 0.5) * W, (opts.wm.y ?? 0.8) * H);
+  } else if (opts.wm && opts.wm.text) wmRect = drawWatermark(ctx, opts.wm.text, W, H, (opts.wm.x ?? 0.5) * W, (opts.wm.y ?? 0.8) * H, opts.sty && opts.sty.wm);
   return { capRect, wmRect, capYDefault: yDef / H };
 }
 
@@ -627,8 +659,11 @@ async function flushSettings(){
 window.addEventListener("beforeunload", () => { if (Object.keys(pendingSet).length) navigator.sendBeacon?.("/api/settings", new Blob([JSON.stringify(pendingSet)], { type: "application/json" })); });
 function bindSettings(){
   if (settingsBound) return; settingsBound = true;
-  const fmt = { dur_futebol: v => `${Math.floor(v / 60)}min${v % 60 ? (" " + (v % 60) + "s") : ""} (o lance inteiro + a reação)`, auto_clean_days: v => +v === 0 ? "nunca" : `${v} dia${+v > 1 ? "s" : ""}`, max_gb: v => +v === 0 ? "sem limite" : `${v} GB`, gap: v => `${v}s`, live_speech: v => v, vod_listen_all: v => v, vod_parallel: v => (+v === 1 ? "1 (um de cada vez)" : +v === 3 ? "3 (só se o PC for forte)" : `${v}`) + (+v > 1 ? " · com live gravando: 1" : ""), pad: v => +v === 0 ? "nenhuma" : `${v}s antes e ${v}s depois`, style: v => v, min_score: v => (+v).toFixed(1), discard_below: v => +v === 0 ? "nunca" : (+v).toFixed(1), dur: v => `${v}s (${Math.round(v * 2 / 3)}s antes do momento, ${v - Math.round(v * 2 / 3)}s depois)`, vod_max: v => v, ov_secs: v => +v > 40 ? "o vídeo todo" : v + "s" };
-  for (const id of ["min_score", "discard_below", "dur", "vod_max", "ov_secs", "ov_on", "tags", "audio_mode", "posted_cleanup", "pad", "style", "vod_parallel", "gap", "live_speech", "vod_listen_all", "auto_clean_days", "max_gb", "dur_futebol"]){
+  $("#cap_style").innerHTML = styleOpts("cap", "Variar sozinho (cada corte de um jeito)");
+  $("#cap_font").innerHTML = styleOpts("font", "Variar sozinho");
+  $("#wm_style").innerHTML = styleOpts("wm", "Variar sozinho");
+  const fmt = { cap_style: v => v, cap_font: v => v, wm_style: v => v, dur_futebol: v => `${Math.floor(v / 60)}min${v % 60 ? (" " + (v % 60) + "s") : ""} (o lance inteiro + a reação)`, auto_clean_days: v => +v === 0 ? "nunca" : `${v} dia${+v > 1 ? "s" : ""}`, max_gb: v => +v === 0 ? "sem limite" : `${v} GB`, gap: v => `${v}s`, live_speech: v => v, vod_listen_all: v => v, vod_parallel: v => (+v === 1 ? "1 (um de cada vez)" : +v === 3 ? "3 (só se o PC for forte)" : `${v}`) + (+v > 1 ? " · com live gravando: 1" : ""), pad: v => +v === 0 ? "nenhuma" : `${v}s antes e ${v}s depois`, style: v => v, min_score: v => (+v).toFixed(1), discard_below: v => +v === 0 ? "nunca" : (+v).toFixed(1), dur: v => `${v}s (${Math.round(v * 2 / 3)}s antes do momento, ${v - Math.round(v * 2 / 3)}s depois)`, vod_max: v => v, ov_secs: v => +v > 40 ? "o vídeo todo" : v + "s" };
+  for (const id of ["min_score", "discard_below", "dur", "vod_max", "ov_secs", "ov_on", "tags", "audio_mode", "posted_cleanup", "pad", "style", "vod_parallel", "gap", "live_speech", "vod_listen_all", "auto_clean_days", "max_gb", "dur_futebol", "cap_style", "cap_font", "wm_style"]){
     const el = $("#" + id), out = el.parentElement.querySelector("output"), val = ST.settings[id];
     if (el.type === "checkbox") el.checked = !!val; else el.value = val;
     if (out) out.textContent = fmt[id](val);
@@ -833,7 +868,7 @@ function drawPreview(id){
   if (!img){ ctx.fillStyle = "#000"; ctx.fillRect(0, 0, cv.width, cv.height); return; }
   const lay = c.layout_used || (c.cam ? "cam" : "game");
   drawVertical(ctx, img, img.width, img.height, lay === "cam" ? c.cam : null, cv.width, cv.height, st.want, lay,
-    { capY: c.cap_y, wm: markOpts(c, c.wm_x, c.wm_y) });
+    { capY: c.cap_y, wm: markOpts(c, c.wm_x, c.wm_y), sty: c.sty });
 }
 const frameObs = new IntersectionObserver(entries => {
   for (const e of entries){
@@ -866,6 +901,7 @@ function openEditor(c){
   $("#edWmBox").hidden = !ED.wm;
   $("#edOn").checked = ED.on; $("#edText").value = ED.text;
   $("#edSubs").checked = ED.subs; $("#edZoom").checked = ED.zoom; edSubInfo();
+  fillStyleSelects(c);
   v.addEventListener("loadedmetadata", () => {
     const d = v.duration; ED.dur = d; if (ED.te == null || ED.te > d) ED.te = d; if (ED.te0 == null || ED.te0 > d) ED.te0 = d;
     for (const id of ["edTs", "edTe"]){ $("#" + id).max = d.toFixed(1); }
@@ -873,6 +909,22 @@ function openEditor(c){
   }, { once: true });
   $("#editModal").hidden = false;
   cancelAnimationFrame(ED.raf); ED.raf = requestAnimationFrame(edLoop);
+}
+/* estilos: "auto" = varia sozinho (a prévia mostra o que esse corte sorteou) */
+function styleOpts(kind, autoLabel){
+  const S = (ST.styles || {})[kind] || {};
+  return `<option value="auto">${autoLabel}</option>` + Object.entries(S).map(([k, v]) => `<option value="${k}">${esc(typeof v === "string" ? v : v.name)}</option>`).join("");
+}
+function fillStyleSelects(c){
+  $("#edCapStyle").innerHTML = styleOpts("cap", "Cores: variar sozinho");
+  $("#edCapFont").innerHTML = styleOpts("font", "Letra: variar sozinho");
+  $("#edWmStyle").innerHTML = styleOpts("wm", "Variar sozinho");
+  $("#edCapStyle").value = c.cap_style || "auto"; $("#edCapFont").value = c.cap_font || "auto"; $("#edWmStyle").value = c.wm_style || "auto";
+}
+function edSty(){
+  const c = ED.c || {}, auto = c.sty || {};
+  const pick = (id, k) => { const v = $(id).value; return v && v !== "auto" ? v : auto[k]; };
+  return { cap: pick("#edCapStyle", "cap"), font: pick("#edCapFont", "font"), wm: pick("#edWmStyle", "wm") };
 }
 function closeEditor(){ cancelAnimationFrame(ED.raf); if (ED.v){ ED.v.pause(); ED.v.removeAttribute("src"); ED.v.load(); } ED.v = null; $("#editModal").hidden = true; }
 function clipLen(){ return Math.max(0.5, (ED.te ?? 0) - ED.ts); }
@@ -904,7 +956,7 @@ function edLoop(){
     const c = ED.c, lay = c.layout_used || (c.cam ? "cam" : "game"), cv = $("#edCanvas");
     // fora do tempo do texto ele aparece apagadinho, só pra dar pra arrastar
     ED.rects = drawVertical(cv.getContext("2d"), v, v.videoWidth, v.videoHeight, lay === "cam" ? c.cam : null, cv.width, cv.height,
-      ED.on ? ED.text : "", lay, { capY: ED.capY, capAlpha: inWin ? 1 : 0.35,
+      ED.on ? ED.text : "", lay, { capY: ED.capY, capAlpha: inWin ? 1 : 0.35, sty: edSty(),
         wm: ED.wm ? (ED.wm.lowerOf ? (lowerImg(ED.wm.lowerOf) ? { img: lowerImg(ED.wm.lowerOf), x: ED.wm.x, y: ED.wm.y, wf: ED.wm.lowerOf.lower_wf } : null) : ED.wm) : null });
     $("#edTime").textContent = `${fmtT(v.currentTime)}  ·  no corte: ${fmtT(rel)} de ${fmtT(clipLen())}`;
     $("#edHead").style.left = `${(v.currentTime / ED.dur * 100).toFixed(2)}%`;
@@ -965,11 +1017,13 @@ $("#edCanvas").addEventListener("pointerup", () => { ED.drag = null; $("#edCanva
 async function saveEditor(reset){
   const c = ED.c; if (!c) return;
   const body = reset
-    ? { trim_start: null, trim_end: null, cap_start: null, cap_end: null, cap_y: null, wm_x: null, wm_y: null, subs_on: null, zoom_on: null, sub_y: null }
+    ? { trim_start: null, trim_end: null, cap_start: null, cap_end: null, cap_y: null, wm_x: null, wm_y: null, subs_on: null, zoom_on: null, sub_y: null,
+        cap_style: null, cap_font: null, wm_style: null }
     : { ...(Math.abs(ED.ts - ED.ts0) < 0.05 && Math.abs(ED.te - ED.te0) < 0.05
           ? { trim_start: null, trim_end: null }          // não mexeu: continua seguindo o estilo do corte
           : { trim_start: +ED.ts.toFixed(2), trim_end: +ED.te.toFixed(2) }),
         subs_on: ED.subs ? true : null, zoom_on: ED.zoom === ED.dynDef ? null : ED.zoom, sub_y: ED.subY,
+        cap_style: $("#edCapStyle").value, cap_font: $("#edCapFont").value, wm_style: $("#edWmStyle").value,
         cap_start: +ED.ca.toFixed(2), cap_end: ED.cb >= 9000 ? 9999 : +ED.cb.toFixed(2),
         cap_y: ED.capY, wm_x: ED.wm ? +ED.wm.x.toFixed(3) : null, wm_y: ED.wm ? +ED.wm.y.toFixed(3) : null,
         overlay: ED.text, overlay_on: ED.on };
@@ -1268,6 +1322,7 @@ $("#cmpItems").addEventListener("click", async e => {
 setInterval(() => { if (CMP.items.some(x => x.status !== "pronto" && x.status !== "erro")) loadCompile().catch(() => {}); }, 4000);
 
 /* ------------------------------------------------------------ início */
+for (const f of ["CortesAnton", "CortesArchivo", "CortesBangers", "CortesLuckiest", "CortesBebas"]) document.fonts?.load(`40px "${f}"`).catch(() => {});
 loadState().then(() => { loadClips(true); loadStorage(); loadInsights(); loadCompile().catch(() => {}); }).catch(e => toast("Não conectou no programa: " + e.message, 8000));
 // com a aba escondida (minimizada / outra aba), o painel atualiza bem menos: não gasta o PC à toa
 let tick = 0;

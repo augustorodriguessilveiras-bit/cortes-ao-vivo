@@ -75,7 +75,8 @@ def make_horizontal_for(clip_id):
     if c.get("file_hw") and hw.exists() and (not v or not v.exists() or hw.stat().st_mtime >= v.stat().st_mtime):
         return hw                                            # já está feito e atualizado
     tmp_h = hw.with_name(hw.stem + ".novo.mp4")
-    render.horizontal_final(h, tmp_h, wm, trim, audio_mode=settings.get("audio_mode"))
+    render.horizontal_final(h, tmp_h, wm, trim, audio_mode=settings.get("audio_mode"),
+                            wm_style=render.pick_styles(clip_id, c.get("cap_style"), c.get("cap_font"), c.get("wm_style"))[2])
     tmp_h.replace(hw)
     db.update("clips", clip_id, {"file_hw": rel(hw)})
     return hw
@@ -188,7 +189,8 @@ def render_vertical_for(clip_id):
                                     cap_secs=settings.get("ov_secs"), layout=c.get("layout") or "auto", watermark=wm,
                                     trim=trim, cap_win=cap_win, cap_y=c.get("cap_y"), wm_pos=wm_pos,
                                     audio_mode=settings.get("audio_mode"),
-                                    subs=words if subs_on else None, sub_y=c.get("sub_y"), zooms=zooms)
+                                    subs=words if subs_on else None, sub_y=c.get("sub_y"), zooms=zooms,
+                                    styles=render.pick_styles(clip_id, c.get("cap_style"), c.get("cap_font"), c.get("wm_style")))
         tmp.replace(v)
         # o horizontal pra baixar agora só é feito quando você clica em "⬇ Horizontal" (metade do trabalho a cada edição)
         if c.get("file_hw"):

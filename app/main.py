@@ -139,6 +139,7 @@ def state():
     enc = render._enc[0] if render._enc else "verificando…"
     return {"channels": chans, "vods": vods, "settings": settings.get_all(), "activity": list(ACTIVITY)[::-1][:15],
             "version": version.status(), "learning": quality.stats(), "speech": transcribe.status(),
+            "styles": STYLES_INFO,
             "disk_free_gb": round(disk.free / 1e9, 1), "encoder": enc}
 
 
@@ -307,6 +308,8 @@ def list_clips(status: str = "", channel: str = "", limit: int = 300):
         et = effective_trim(c)                       # pedaço que vira o corte (pro editor)
         c["eff_ts"], c["eff_te"] = (et if et else (None, None))
         c["has_words"] = bool(c.pop("has_words_col", 0))
+        c["sty"] = dict(zip(("cap", "font", "wm"), render.pick_styles(c["id"], c.get("cap_style"), c.get("cap_font"),
+                                                                      c.get("wm_style"))))
         c["posted_on"] = _js(c.get("posted_on"))
         c["views"] = _js(c.get("views"))
         if c.get("dup_of"):
@@ -323,6 +326,20 @@ def _js(v):
 
 
 PLATS = ("tiktok", "reels", "shorts")
+
+
+def _rgb(t):
+    return "#%02x%02x%02x" % tuple(t[:3]) if t else None
+
+
+# estilos pro painel (nomes e cores, pra prévia ficar igual ao vídeo)
+STYLES_INFO = {
+    "cap": {k: {"name": v["name"], "bg": _rgb(v["bg"]), "fg": _rgb(v["fg"])} for k, v in render.CAP_STYLES.items()},
+    "font": dict(render.FONT_NAMES),
+    "wm": {k: {"name": v["name"], "bg": (f"rgba({v['bg'][0]},{v['bg'][1]},{v['bg'][2]},{v['bg'][3] / 255:.2f})" if v["bg"] else None),
+               "fg": _rgb(v["fg"]), "font": v.get("font", "classica"), "upper": bool(v.get("upper"))}
+           for k, v in render.WM_STYLES.items()},
+}
 
 
 class StyleIn(BaseModel):
@@ -639,6 +656,9 @@ class EditIn(BaseModel):
     subs_on: bool | None = None
     zoom_on: bool | None = None
     sub_y: float | None = None
+    cap_style: str | None = None      # "auto" ou vazio = varia sozinho
+    cap_font: str | None = None
+    wm_style: str | None = None
 
 
 @app.post("/api/clips/{clip_id}/edit")
@@ -650,6 +670,9 @@ def edit_clip_video(clip_id: int, body: EditIn):
         data.pop("overlay")
     if data["overlay_on"] is None:
         data.pop("overlay_on")
+    for k in ("cap_style", "cap_font", "wm_style"):
+        if data.get(k) == "auto":
+            data[k] = None
     data.update({"rendering": 1, "warn": None})
     db.update("clips", clip_id, data)
     queue_render(clip_id)
@@ -1266,6 +1289,7 @@ def cleanup(body: CleanupIn):
 
 app.mount("/media", StaticFiles(directory=C.CLIPS_DIR), name="media")
 STATIC = Path(__file__).parent / "static"
+app.mount("/fonts", StaticFiles(directory=STATIC / "fonts"), name="fonts")
 
 
 @app.get("/")

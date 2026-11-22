@@ -184,16 +184,73 @@ def _font(size):
     return ImageFont.load_default(size)
 
 
-def caption_png(text, out):
-    """Faixa branca 1080 de largura com texto preto e forte. Retorna a altura."""
-    text = re.sub(r"\s+", " ", _EMOJI.sub("", text)).strip().upper()
+# ------------------------------------------------------------ estilos (cores e letras) do título e da marca d'água
+FONT_DIR = Path(__file__).parent / "static" / "fonts"
+FONT_FILES = {"anton": "Anton-Regular.ttf", "archivo": "ArchivoBlack-Regular.ttf", "bangers": "Bangers-Regular.ttf",
+              "luckiest": "LuckiestGuy-Regular.ttf", "bebas": "BebasNeue-Regular.ttf"}
+FONT_NAMES = {"classica": "Clássica (grossa)", "anton": "Anton (alta)", "archivo": "Archivo Black (larga)",
+              "bangers": "Bangers (quadrinho)", "luckiest": "Luckiest Guy (divertida)", "bebas": "Bebas Neue (fina e alta)"}
+# título: fundo (None = sem faixa, só letra com contorno), cor da letra
+CAP_STYLES = {
+    "branco": {"name": "Faixa branca, letra preta", "bg": (255, 255, 255), "fg": (0, 0, 0)},
+    "preto": {"name": "Faixa preta, letra branca", "bg": (0, 0, 0), "fg": (255, 255, 255)},
+    "amarelo": {"name": "Faixa amarela, letra preta", "bg": (255, 212, 0), "fg": (0, 0, 0)},
+    "verde": {"name": "Faixa verde, letra preta", "bg": (139, 255, 43), "fg": (0, 0, 0)},
+    "rosa": {"name": "Faixa rosa, letra branca", "bg": (255, 46, 136), "fg": (255, 255, 255)},
+    "vermelho": {"name": "Faixa vermelha, letra branca", "bg": (225, 29, 46), "fg": (255, 255, 255)},
+    "contorno": {"name": "Sem faixa, letra branca com contorno", "bg": None, "fg": (255, 255, 255)},
+    "contorno_amarelo": {"name": "Sem faixa, letra amarela com contorno", "bg": None, "fg": (255, 221, 51)},
+}
+WM_STYLES = {
+    "escuro": {"name": "Escura transparente, letra branca", "bg": (0, 0, 0, 165), "fg": (255, 255, 255), "font": "classica"},
+    "verde": {"name": "Verde, letra preta (maiúscula)", "bg": (139, 255, 43, 255), "fg": (0, 0, 0), "font": "archivo", "upper": True},
+    "branco": {"name": "Branca, letra preta", "bg": (255, 255, 255, 255), "fg": (0, 0, 0), "font": "classica"},
+    "preto": {"name": "Preta, letra branca", "bg": (0, 0, 0, 255), "fg": (255, 255, 255), "font": "classica"},
+    "amarelo": {"name": "Amarela, letra preta (maiúscula)", "bg": (255, 212, 0, 255), "fg": (0, 0, 0), "font": "archivo", "upper": True},
+    "contorno": {"name": "Sem fundo, letra branca com contorno", "bg": None, "fg": (255, 255, 255), "font": "classica"},
+}
+
+
+def pick_styles(clip_id, cap_style=None, cap_font=None, wm_style=None):
+    """Estilo de cada corte. 'auto' (ou vazio) = varia sozinho, mas sempre o mesmo pra esse corte."""
+    import random as _r
+    from . import settings as _s
+    rnd = _r.Random(int(clip_id or 0) * 7919)
+    cs = cap_style if cap_style in CAP_STYLES else _s.get("cap_style")
+    cf = cap_font if cap_font in FONT_NAMES else _s.get("cap_font")
+    ws = wm_style if wm_style in WM_STYLES else _s.get("wm_style")
+    cs = cs if cs in CAP_STYLES else rnd.choice(list(CAP_STYLES))
+    cf = cf if cf in FONT_NAMES else rnd.choice(list(FONT_NAMES))
+    ws = ws if ws in WM_STYLES else rnd.choice(list(WM_STYLES))
+    return cs, cf, ws
+
+
+def _font_named(key, size):
+    f = FONT_FILES.get(key)
+    if f and (FONT_DIR / f).exists():
+        return ImageFont.truetype(str(FONT_DIR / f), size)
+    return _font(size)
+
+
+_KEEP = re.compile(r"[^\w\s.,!?:;'\"()\-/@#%&+*]")
+
+
+def clean_text(text):
+    """Tira emoji e símbolos que a letra não tem (apareciam como um quadradinho/caractere estranho)."""
+    return re.sub(r"\s+", " ", _KEEP.sub("", _EMOJI.sub("", text or ""))).strip()
+
+
+def caption_png(text, out, style="branco", font_key="classica"):
+    """Faixa do título (1080 de largura). Retorna a altura."""
+    text = clean_text(text).upper()
     if not text:
         return 0
+    st = CAP_STYLES.get(style, CAP_STYLES["branco"])
     max_w = W * 0.92
-    size = int(W * 0.056)
+    size = int(W * (0.066 if font_key in ("anton", "bebas") else 0.056))
     dummy = ImageDraw.Draw(Image.new("RGB", (10, 10)))
     while True:
-        font = _font(size)
+        font = _font_named(font_key, size)
         lines, cur = [], ""
         for word in text.split(" "):
             t = f"{cur} {word}".strip()
@@ -209,10 +266,12 @@ def caption_png(text, out):
         size -= 2
     lh, pad = int(size * 1.18), int(size * 0.55)
     band_h = even(lh * len(lines) + pad * 2)
-    img = Image.new("RGBA", (W, band_h), (255, 255, 255, 255))
+    bg = st["bg"]
+    img = Image.new("RGBA", (W, band_h), (*bg, 255) if bg else (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
+    stroke = {} if bg else {"stroke_width": max(4, size // 8), "stroke_fill": (0, 0, 0, 255)}
     for i, l in enumerate(lines):
-        d.text((W / 2, pad + lh * (i + 0.5)), l, font=font, fill=(0, 0, 0, 255), anchor="mm")
+        d.text((W / 2, pad + lh * (i + 0.5)), l, font=font, fill=(*st["fg"], 255), anchor="mm", **stroke)
     img.save(out)
     return band_h
 
@@ -223,7 +282,7 @@ _PUNCT = re.compile(r"[\"“”«»(),.;:…]+")
 
 
 def _clean_word(w):
-    w = _PUNCT.sub("", _EMOJI.sub("", w or "")).strip().upper()
+    w = _PUNCT.sub("", clean_text(w)).strip().upper()
     return w
 
 
@@ -331,19 +390,26 @@ def fps_of(path):
 
 
 # ------------------------------------------------------------ marca d'água
-def watermark_png(text, out, width, frac=0.034):
-    """Selo legível com o texto (ex: kick.com/orenatovicente): fundo escuro, texto branco grosso."""
+def watermark_png(text, out, width, frac=0.034, style="escuro"):
+    """Selo legível com o texto (ex: kick.com/orenatovicente), no estilo escolhido."""
+    st = WM_STYLES.get(style, WM_STYLES["escuro"])
+    text = text.upper() if st.get("upper") else text
     size = max(18, int(width * frac))
-    font = _font(size)
+    font = _font_named(st.get("font", "classica"), size)
     d = ImageDraw.Draw(Image.new("RGB", (10, 10)))
     tw = d.textlength(text, font=font)
     pad_x, pad_y = int(size * 0.7), int(size * 0.38)
     w, h = even(tw + pad_x * 2), even(size * 1.2 + pad_y * 2)
     img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     g = ImageDraw.Draw(img)
-    g.rounded_rectangle([0, 0, w - 1, h - 1], radius=h // 2, fill=(0, 0, 0, 165))
-    g.text((w / 2, h / 2), text, font=font, fill=(255, 255, 255, 255), anchor="mm",
-           stroke_width=max(1, size // 18), stroke_fill=(0, 0, 0, 255))
+    if st["bg"]:
+        radius = h // 2 if st.get("font", "classica") == "classica" else max(6, h // 5)
+        g.rounded_rectangle([0, 0, w - 1, h - 1], radius=radius, fill=st["bg"])
+        g.text((w / 2, h / 2), text, font=font, fill=(*st["fg"], 255), anchor="mm",
+               stroke_width=max(1, size // 18) if st["fg"] == (255, 255, 255) else 0, stroke_fill=(0, 0, 0, 255))
+    else:
+        g.text((w / 2, h / 2), text, font=font, fill=(*st["fg"], 255), anchor="mm",
+               stroke_width=max(3, size // 7), stroke_fill=(0, 0, 0, 255))
     img.save(out)
     return w, h
 
@@ -452,7 +518,7 @@ def lower_preview_png(path, out):
     return info
 
 
-def horizontal_final(src, out, text=None, trim=None, audio_mode="auto"):
+def horizontal_final(src, out, text=None, trim=None, audio_mode="auto", wm_style="escuro"):
     """Horizontal pra baixar: com o corte manual (trim) e a marca d'água, se tiver."""
     vw, vh, full = probe(src)
     ts, te = (trim or (0, full))
@@ -470,7 +536,7 @@ def horizontal_final(src, out, text=None, trim=None, audio_mode="auto"):
             tw = min(vw * 0.45, vw * info["wfrac"] * 0.6)
             flt = f"[1:v]{lower_filter(info, tw)}format=rgba[lw];[0:v][lw]overlay=(W-w)/2:H-h-H*0.04:shortest=1[v]"
         elif text:
-            _, h = watermark_png(text, png, vw, frac=0.026)
+            _, h = watermark_png(text, png, vw, frac=0.026, style=wm_style)
             y = int(vh - h - vh * 0.05)
             inputs += ["-loop", "1", "-t", f"{dur:.2f}", "-i", str(png)]
             flt = f"[0:v][1:v]overlay=(W-w)/2:{y}:shortest=1[v]"
@@ -706,7 +772,8 @@ def vertical_filter(vw, vh, layout, cam, focus_x, cap_h, cap_secs, dur=0, wm_idx
 
 
 def make_vertical(h_path, out, thumb, cam=None, caption="", cap_secs=10, layout="auto", watermark=None,
-                  trim=None, cap_win=None, cap_y=None, wm_pos=None, audio_mode="auto", subs=None, sub_y=None, zooms=None):
+                  trim=None, cap_win=None, cap_y=None, wm_pos=None, audio_mode="auto", subs=None, sub_y=None, zooms=None,
+                  styles=None):
     """
     Monta o vertical. layout: 'auto' (decide sozinho), 'cam', 'full' ou 'game'. Retorna o formato usado.
     trim: (início, fim) em segundos dentro do corte · cap_win: (aparece, some) do texto, contando do início do corte
@@ -737,7 +804,8 @@ def make_vertical(h_path, out, thumb, cam=None, caption="", cap_secs=10, layout=
             else:
                 layout = "game"
     cap_png = Path(out).with_suffix(".faixa.png")
-    cap_h = caption_png(caption, cap_png) if caption else 0
+    cap_style, cap_font, wm_style = styles or ("branco", "classica", "escuro")
+    cap_h = caption_png(caption, cap_png, cap_style, cap_font) if caption else 0
     cap_secs = 1e9 if cap_secs > 40 else cap_secs
     if cap_win:
         a, b = max(0.0, cap_win[0] or 0.0), cap_win[1] if cap_win[1] is not None else 1e9
@@ -754,7 +822,7 @@ def make_vertical(h_path, out, thumb, cam=None, caption="", cap_secs=10, layout=
         wm_pre, wm_y, wm_xc = lower_filter(info, tw), int(H * wy - th / 2), W * wx
         wm_idx = 2 if cap_h else 1
     elif watermark:
-        _, wm_h = watermark_png(watermark, wm_png, W, frac=0.052)   # grande o bastante pra ler no celular
+        _, wm_h = watermark_png(watermark, wm_png, W, frac=0.052, style=wm_style)   # grande o bastante pra ler no celular
         wx, wy = wm_pos if wm_pos else (0.5, 0.80)
         wm_idx, wm_y, wm_xc = (2 if cap_h else 1), int(H * wy) - wm_h // 2, W * wx
         wm_args = ["-loop", "1", "-t", f"{dur:.2f}", "-i", str(wm_png)]

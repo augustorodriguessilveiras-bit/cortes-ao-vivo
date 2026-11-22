@@ -64,7 +64,8 @@ with _lock:
                   # sobra guardada antes/depois · estilo dinâmico · onde postou e quantas views · repetido
                   "core_start": "REAL", "core_end": "REAL", "smart_start": "REAL", "smart_end": "REAL",
                   "peak_rel": "REAL", "words": "TEXT", "style": "TEXT", "subs_on": "INTEGER", "zoom_on": "INTEGER",
-                  "sub_y": "REAL", "posted_on": "TEXT", "views": "TEXT", "dup_of": "INTEGER", "style_used": "TEXT"},
+                  "sub_y": "REAL", "posted_on": "TEXT", "views": "TEXT", "dup_of": "INTEGER", "style_used": "TEXT",
+                  "cap_style": "TEXT", "cap_font": "TEXT", "wm_style": "TEXT"},     # estilo escolhido (vazio = automático)
     }
     for table, cols in NEW.items():
         have = {r[1] for r in _conn.execute(f"PRAGMA table_info({table})")}

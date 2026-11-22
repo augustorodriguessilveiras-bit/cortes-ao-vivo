@@ -22,6 +22,9 @@ DEFAULTS = {
     "pad": 30,                         # sobra guardada antes e depois do corte (pra puxar mais no editor)
     "vod_parallel": 2,                 # quantos VODs são processados ao mesmo tempo (1 a 3)
     "dur_futebol": 120,                # cortes de futebol (streamer reagindo a jogo) são mais longos
+    "cap_style": "auto",               # estilo do título nos cortes novos (auto = varia sozinho)
+    "cap_font": "auto",                # letra do título (auto = varia sozinho)
+    "wm_style": "auto",                # estilo da marca d'água (auto = varia sozinho)
     "style": "padrao",                 # estilo dos cortes novos: padrao · dinamico (zoom e começo/fim esperto)
 }
 _lock = threading.Lock()
