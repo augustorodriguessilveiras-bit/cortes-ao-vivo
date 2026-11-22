@@ -19,7 +19,7 @@ import re
 
 from . import compile as compilado
 from . import db, drive, meta, procs, quality, render, rules, settings, sources, transcribe, version, vod
-from .recorder import CLIP_POOL, ChannelWorker, after_insert, clip_paths, effective_trim, extra_fields, listen, rel, render_vertical_for
+from .recorder import CLIP_POOL, ChannelWorker, edit_queue, make_horizontal_for, queue_render, after_insert, clip_paths, effective_trim, extra_fields, listen, rel, render_vertical_for
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(message)s", datefmt="%H:%M:%S")
 for _n in ("httpx", "urllib3", "streamlink"):
@@ -50,7 +50,14 @@ def start_worker(ch):
 @asynccontextmanager
 async def lifespan(app):
     procs.tie_children_to_me()   # gravadores fecham junto com o programa (Windows)
-    db.execute("UPDATE clips SET rendering=0 WHERE rendering=1")
+    # cortes que estavam sendo montados/refeitos quando o programa fechou: refaz agora (antes ficavam pela metade)
+    for c in db.query("SELECT id, file_h, file_v FROM clips WHERE COALESCE(files_deleted,0)=0 AND "
+                      "(rendering=1 OR (file_v IS NULL AND file_h IS NOT NULL))"):
+        if c["file_h"] and (C.CLIPS_DIR / c["file_h"]).exists():
+            db.update("clips", c["id"], {"rendering": 1})
+            queue_render(c["id"])
+        else:
+            db.update("clips", c["id"], {"rendering": 0, "warn": "O vídeo desse corte se perdeu quando o programa fechou. Pode excluir."})
     # cortes de versões antigas: o texto que está no vídeo é o texto salvo
     db.execute("UPDATE clips SET overlay_applied=COALESCE(overlay,'') WHERE overlay_applied IS NULL")
     CLIP_POOL.submit(render.encoder)  # descobre a placa de vídeo logo no começo
@@ -218,12 +225,15 @@ def list_clips(status: str = "", channel: str = "", limit: int = 300):
     sql += " ORDER BY created_at DESC LIMIT ?"
     params.append(limit)
     rows = db.query(sql, params)
+    now_id, q_ids = edit_queue()
     for c in rows:
         c["rules"] = rules.public(c["channel_name"])
         c["ov_secs"] = settings.get("ov_secs")   # cortes feitos antes das tags do YouTube ganham as tags agora
         if not c.get("yt_tags"):
             c["yt_tags"] = meta.youtube_tags(c["channel_name"], c.get("platform") or "", c.get("cat") or "geral", c.get("subject"))
             db.update("clips", c["id"], {"yt_tags": c["yt_tags"]})
+        if c.get("rendering"):                      # posição na fila das edições
+            c["queue_pos"] = 0 if c["id"] == now_id else (q_ids.index(c["id"]) + 1 if c["id"] in q_ids else None)
         et = effective_trim(c)                       # pedaço que vira o corte (pro editor)
         c["eff_ts"], c["eff_te"] = (et if et else (None, None))
         c["has_words"] = bool(c.get("words"))
@@ -259,7 +269,7 @@ def set_style(clip_id: int, body: StyleIn):
         raise HTTPException(400, "Estilo inválido")
     db.update("clips", clip_id, {"style": body.style, "trim_start": None, "trim_end": None, "subs_on": None,
                                  "zoom_on": None, "rendering": 1, "warn": None})
-    CLIP_POOL.submit(render_vertical_for, clip_id)
+    queue_render(clip_id)
     if body.style == "dinamico" and not c.get("words") and not transcribe.available():
         return {"ok": True, "aviso": "Sem o reconhecimento de fala instalado, o dinâmico só consegue dar o zoom no momento forte."}
     return {"ok": True}
@@ -415,7 +425,7 @@ def rerender(clip_id: int, body: CamIn | None = None):
                 for ch in db.query("SELECT id FROM channels WHERE name=? AND platform=?", (c["channel_name"], c["platform"])):
                     db.update("channels", ch["id"], {"cam": body.cam})
     db.update("clips", clip_id, data)
-    CLIP_POOL.submit(render_vertical_for, clip_id)
+    queue_render(clip_id)
     return {"ok": True}
 
 
@@ -514,7 +524,7 @@ def edit_clip_video(clip_id: int, body: EditIn):
         data.pop("overlay_on")
     data.update({"rendering": 1, "warn": None})
     db.update("clips", clip_id, data)
-    CLIP_POOL.submit(render_vertical_for, clip_id)
+    queue_render(clip_id)
     plog.info("✂ %s: refazendo o corte com as suas edições…", c["channel_name"])
     return {"ok": True}
 
@@ -526,7 +536,7 @@ def _rerender_channel(key):
     for c in db.query("SELECT id, channel_name FROM clips WHERE rendering=0"):
         if rules.key_for(c["channel_name"]) == key:
             db.update("clips", c["id"], {"rendering": 1})
-            CLIP_POOL.submit(render_vertical_for, c["id"])
+            queue_render(c["id"])
             n += 1
     return n
 
@@ -860,8 +870,21 @@ async def upload_clip(request: Request, name: str, platform: str = "kick", theme
 def retext(clip_id: int):
     _clip(clip_id)
     db.update("clips", clip_id, {"rendering": 1, "warn": None})
-    CLIP_POOL.submit(render_vertical_for, clip_id)
+    queue_render(clip_id)
     return {"ok": True}
+
+
+@app.get("/api/clips/{clip_id}/horizontal")
+def clip_horizontal(clip_id: int):
+    """Baixar o horizontal: monta na hora (com o pedaço escolhido e a marca d'água) se ainda não estiver pronto."""
+    c = _clip(clip_id)
+    if c.get("files_deleted") or not c.get("file_h") or not (C.CLIPS_DIR / c["file_h"]).exists():
+        raise HTTPException(404, "O vídeo desse corte não está mais no computador.")
+    try:
+        f = make_horizontal_for(clip_id)
+    except Exception as e:
+        raise HTTPException(500, f"Não deu pra montar o horizontal: {str(e)[:200]}")
+    return FileResponse(f, media_type="video/mp4", filename=f"{c['channel_name']}_{clip_id}_horizontal.mp4")
 
 
 @app.get("/api/clips/{clip_id}/frame")

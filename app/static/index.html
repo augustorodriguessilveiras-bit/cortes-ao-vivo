@@ -625,7 +625,7 @@ const dirty = new Map();   // edições ainda não salvas (não podem ser apagad
 let confirmDel = null, confirmPost = null, clipsKey = "";
 function renderClips(force){
   const el = $("#clips");
-  const key = JSON.stringify([confirmDel, confirmPost, clips.map(c => [c.id, c.rendering, c.status, c.created_at, c.title, c.warn, c.overlay_applied, c.yt_tags, c.files_deleted, c.style, c.posted_on, c.views, c.dup_of])]);
+  const key = JSON.stringify([confirmDel, confirmPost, clips.map(c => [c.id, c.rendering, c.status, c.created_at, c.title, c.warn, c.overlay_applied, c.yt_tags, c.files_deleted, c.style, c.posted_on, c.views, c.dup_of, c.queue_pos])]);
   if (!force && key === clipsKey) return;
   if (!force && el.contains(document.activeElement) && /INPUT|TEXTAREA/.test(document.activeElement.tagName)) return;
   if (!force && [...el.querySelectorAll("video")].some(v => !v.paused)) return;
@@ -636,7 +636,7 @@ function renderClips(force){
     const when = c.source === "vod" ? "VOD" : c.source === "enviado" ? "📤 Enviado por você" : c.source === "trecho" ? "✂ Trecho de VOD escolhido por você" : new Date(c.peak_time * 1000).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
     const gone = !!c.files_deleted;
     const media = gone ? `<div class="ph" ${c.thumb ? `style="background:#000 url('/media/${c.thumb}${v}') center/cover;"` : ""}><span style="background:rgba(0,0,0,.75);padding:10px 12px;border-radius:10px">✅ Já postado<br>O vídeo foi apagado pra liberar espaço.<br>Título, descrição e tags continuam aqui.</span></div>`
-      : c.rendering ? `<div class="ph">Montando o vídeo vertical…<br>em qualidade original</div>`
+      : c.rendering ? `<div class="ph">${c.queue_pos === 0 ? "🎬 Refazendo o vídeo agora…<br>(1 a 2 minutos)" : c.queue_pos ? `⏳ Na fila pra refazer (${c.queue_pos}º)<br>Começa quando o anterior terminar` : "Montando o vídeo vertical…<br>em qualidade original"}</div>`
       : `<video src="/media/${c.file_v}${v}" ${c.thumb ? `poster="/media/${c.thumb}${v}"` : ""} controls preload="none" playsinline></video>`;
     return `<div class="clip">${media}<div class="body">
       <div class="row between"><b>${esc(c.channel_name)}</b><span class="score ${c.score >= 8 ? "hi" : ""}" title="${c.content_score != null ? `pico ${c.signal_score} · conteúdo (o que ele falou) ${c.content_score}` : "nota do pico (áudio/chat)"}">${c.score}</span></div>
@@ -690,7 +690,7 @@ function renderClips(force){
       <div class="actions">
         ${gone ? "" : `<button class="small primary" data-c="edit" data-id="${id}">✂ Editar corte</button>
         <a class="btn small" href="/media/${c.file_v}${v}" download>⬇ Vertical</a>
-        <a class="btn small" href="/media/${c.file_hw || c.file_h}" download>⬇ Horizontal</a>
+        <a class="btn small" href="/api/clips/${id}/horizontal" download data-hz="1">⬇ Horizontal</a>
         <button class="small" data-c="cam" data-id="${id}">📐 Formato / câmera</button>`}
         ${c.status !== "aprovado" ? `<button class="small" data-c="aprovado" data-id="${id}">✔ Aprovar</button>` : ""}
         ${c.status !== "postado" ? `<button class="small" data-c="postado" data-id="${id}">${confirmPost === id ? "Confirmar? (apaga o vídeo)" : "📤 Postado"}</button>` : ""}
@@ -987,6 +987,7 @@ $("#vods").addEventListener("click", async e => {
 });
 async function copy(text, msg){ try { await navigator.clipboard.writeText(text); toast(msg); } catch { toast("Não deu pra copiar. Selecione o texto e use Ctrl+C."); } }
 $("#clips").addEventListener("click", async e => {
+  if (e.target.closest("a[data-hz]")) toast("Preparando o vídeo horizontal… o download começa sozinho (pode levar até 1 minuto).", 6000);
   const b = e.target.closest("button[data-c]"); if (!b) return;
   const id = +b.dataset.id, c = clips.find(x => x.id === id); if (!c) return;
   const a = b.dataset.c;

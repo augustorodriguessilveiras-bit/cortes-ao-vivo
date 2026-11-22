@@ -29,6 +29,55 @@ log = logging.getLogger("recorder")
 
 # Cortes montados um de cada vez (não disputa o PC com as gravações)
 CLIP_POOL = ThreadPoolExecutor(max_workers=1)
+# Fila só das suas edições (editar, estilo, câmera, texto...): não espera os cortes automáticos
+EDIT_POOL = ThreadPoolExecutor(max_workers=1)
+_edit_q = []
+_edit_now = [None]
+_edit_lock = threading.Lock()
+
+
+def queue_render(clip_id):
+    """Põe o corte na fila das edições (se já estiver esperando, não duplica: ele usa a edição mais nova)."""
+    with _edit_lock:
+        if clip_id in _edit_q:
+            return
+        _edit_q.append(clip_id)
+    EDIT_POOL.submit(_run_edit, clip_id)
+
+
+def _run_edit(clip_id):
+    with _edit_lock:
+        if clip_id in _edit_q:
+            _edit_q.remove(clip_id)
+        _edit_now[0] = clip_id
+    try:
+        render_vertical_for(clip_id)
+    finally:
+        _edit_now[0] = None
+
+
+def edit_queue():
+    with _edit_lock:
+        return _edit_now[0], list(_edit_q)
+
+
+def make_horizontal_for(clip_id):
+    """Horizontal pra baixar (com o pedaço escolhido e a marca d'água). Só é feito quando você pede."""
+    c = db.query("SELECT * FROM clips WHERE id=?", (clip_id,))[0]
+    h = C.CLIPS_DIR / c["file_h"]
+    wm = rules.mark_for(c["channel_name"])
+    trim = effective_trim(c)
+    if not wm and not trim:
+        return h
+    hw = h.with_name(h.name.replace("_h.mp4", "_hw.mp4"))
+    v = C.CLIPS_DIR / c["file_v"] if c.get("file_v") else None
+    if c.get("file_hw") and hw.exists() and (not v or not v.exists() or hw.stat().st_mtime >= v.stat().st_mtime):
+        return hw                                            # já está feito e atualizado
+    tmp_h = hw.with_name(hw.stem + ".novo.mp4")
+    render.horizontal_final(h, tmp_h, wm, trim, audio_mode=settings.get("audio_mode"))
+    tmp_h.replace(hw)
+    db.update("clips", clip_id, {"file_hw": rel(hw)})
+    return hw
 SR = 8000  # taxa de amostragem usada para medir o áudio
 
 
@@ -126,13 +175,10 @@ def render_vertical_for(clip_id):
                                     audio_mode=settings.get("audio_mode"),
                                     subs=words if subs_on else None, sub_y=c.get("sub_y"), zooms=zooms)
         tmp.replace(v)
-        if wm or trim:
-            # horizontal pra baixar, com o corte manual e a marca d'água (o original fica limpo pra poder editar de novo)
-            hw = h.with_name(h.name.replace("_h.mp4", "_hw.mp4"))
-            tmp_h = hw.with_name(hw.stem + ".novo.mp4")
-            render.horizontal_final(h, tmp_h, wm, trim, audio_mode=settings.get("audio_mode"))
-            tmp_h.replace(hw)
-            db.update("clips", clip_id, {"file_hw": rel(hw)})
+        # o horizontal pra baixar agora só é feito quando você clica em "⬇ Horizontal" (metade do trabalho a cada edição)
+        if c.get("file_hw"):
+            safe_unlink(C.CLIPS_DIR / c["file_hw"])
+            db.update("clips", clip_id, {"file_hw": None})
         db.update("clips", clip_id, {"audio_info": getattr(render.make_vertical, "last_audio", None)})
         found = getattr(render.make_vertical, "last_cam", None)
         if found and not c["cam"]:
