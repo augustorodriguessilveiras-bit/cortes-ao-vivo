@@ -259,6 +259,9 @@ details.meta[open] summary{margin-bottom:6px}
   <h2>📈 O que dá mais view</h2>
   <div class="settings" id="insBox" style="flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:10px"><div class="muted">Carregando…</div></div>
 
+  <h2>⭐ O que você curte</h2>
+  <div class="settings" id="likeBox" style="flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:8px"><div class="muted">Carregando…</div></div>
+
   <h2>🎬 Compilado pro YouTube</h2>
   <div class="settings" style="flex-direction:column;align-items:stretch;gap:10px">
     <div class="muted">Junta vários cortes num vídeo deitado (16:9) pro YouTube: o título de cada momento aparece no começo dele, com a marca d'água do campeonato e os capítulos prontos pra descrição. Só aparecem cortes <b style="color:var(--text)">aprovados ou postados que ainda têm o vídeo no PC</b>.</div>
@@ -1202,6 +1205,27 @@ async function loadInsights(){
   } catch {}
 }
 
+/* ------------------------------------------------------------ o que você curte */
+async function loadLikes(){
+  try {
+    const d = await api("/api/likes"), box = $("#likeBox");
+    const intro = `<div class="muted">Assuntos que aparecem nos cortes que você <b style="color:var(--text)">aprovou ou postou</b> (missão, lugar, situação do jogo). Quando <b style="color:var(--text)">qualquer streamer</b> falar disso na live ou no VOD, o momento ganha nota extra e tem mais chance de virar corte. Clique no × pra tirar um assunto que não tem nada a ver.</div>`;
+    const body = d.terms.length
+      ? `<div class="tagchips" style="max-height:none">${d.terms.map(x => `<span>⭐ ${esc(x.show)} <button class="small" data-unlike="${esc(x.t)}" title="Tirar esse assunto" style="padding:0 6px;margin-left:4px">×</button></span>`).join("")}</div>`
+      : `<div class="muted">${d.n < d.min ? `Ainda aprendendo: precisa de ${d.min} cortes aprovados/postados <b style="color:var(--text)">com a fala ouvida</b> (você tem ${d.n}).` : "Ainda não achou assuntos que se repetem nos cortes que você aprovou."} Precisa do reconhecimento de fala funcionando.</div>`;
+    const html = intro + body + (d.blocked.length ? `<div class="muted" style="font-size:12px">Tirados por você: ${d.blocked.map(esc).join(", ")} <button class="small" id="likeReset">Trazer de volta</button></div>` : "");
+    if (box.dataset.h !== html){ box.innerHTML = html; box.dataset.h = html; }
+  } catch {}
+}
+$("#likeBox").addEventListener("click", async e => {
+  const t = e.target.closest("[data-unlike]");
+  try {
+    if (t){ await post("/api/likes/block", { term: t.dataset.unlike }); toast(`"${t.dataset.unlike}" não conta mais.`); loadLikes(); }
+    if (e.target.id === "likeReset"){ await post("/api/likes/reset"); loadLikes(); }
+  } catch (err) { toast(err.message); }
+});
+setInterval(() => loadLikes(), 30000);
+
 /* ------------------------------------------------------------ compilado */
 let CMP = { cands: [], items: [], sel: new Set(), loaded: false };
 async function loadCompile(reselect){
@@ -1250,7 +1274,7 @@ $("#cmpItems").addEventListener("click", async e => {
 setInterval(() => { if (CMP.items.some(x => x.status !== "pronto" && x.status !== "erro")) loadCompile().catch(() => {}); }, 4000);
 
 /* ------------------------------------------------------------ início */
-loadState().then(() => { loadClips(true); loadStorage(); loadInsights(); loadCompile().catch(() => {}); }).catch(e => toast("Não conectou no programa: " + e.message, 8000));
+loadState().then(() => { loadClips(true); loadStorage(); loadInsights(); loadLikes(); loadCompile().catch(() => {}); }).catch(e => toast("Não conectou no programa: " + e.message, 8000));
 setInterval(() => loadState().catch(() => {}), 3000);
 setInterval(() => loadClips().catch(() => {}), 5000);
 </script>

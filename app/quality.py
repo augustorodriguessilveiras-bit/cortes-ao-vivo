@@ -31,7 +31,15 @@ FUNNY = ["kkk", "haha", "hehe", "rsrs", "risos", "zoeira", "que vergonha", "ridi
 
 WIN_BEFORE, WIN_AFTER = 10.0, 12.0     # janela ao redor do momento forte (segundos)
 MODEL_PATH = C.DATA_DIR / "aprendizado.json"
-FEATS = ["sinal", "fala", "reacao", "descoberta", "engracado", "sem_fala", "bug", "nao_ouviu"]
+FEATS = ["sinal", "fala", "reacao", "descoberta", "engracado", "sem_fala", "bug", "nao_ouviu", "curtido"]
+
+
+def _liked(text):
+    try:
+        from . import likes
+        return likes.match(text)
+    except Exception:
+        return []
 
 with db._lock:
     db._conn.execute("CREATE TABLE IF NOT EXISTS feedback (id INTEGER PRIMARY KEY AUTOINCREMENT, "
@@ -77,6 +85,7 @@ def evaluate(signal, speech, peak_rel, dur=None):
     whole = _norm(" ".join(t for _, _, t in speech))
     react, disc, fun = _hits(text, REACTION), _hits(text, DISCOVERY), _hits(whole, FUNNY)
     bug = _hits(text, BUG)
+    liked = _liked(text)            # assuntos parecidos com os cortes que você aprovou
     excl = sum(t.count("!") + t.count("?") for _, _, t in near)
     reasons = []
     if not near:
@@ -84,7 +93,7 @@ def evaluate(signal, speech, peak_rel, dur=None):
         reasons.append("🔇 ninguém falou perto do momento (pode ser só barulho do jogo)")
     else:
         content = 2.0 + min(2.0, ratio * 3) + min(5.0, len(react) * 1.8) + min(4.0, len(disc) * 1.8) \
-            + min(4.5, len(bug) * 2.2) + min(4.0, len(fun) * 1.6) + min(0.8, excl * 0.2)
+            + min(4.5, len(bug) * 2.2) + min(4.0, len(fun) * 1.6) + min(0.8, excl * 0.2) + min(3.0, len(liked) * 1.6)
         content = min(10.0, content)
         quote = max(near, key=lambda x: len(_hits(_norm(x[2]), REACTION + DISCOVERY + FUNNY + BUG)) * 10 + min(len(x[2]), 60))[2]
         if bug:
@@ -97,12 +106,15 @@ def evaluate(signal, speech, peak_rel, dur=None):
             reasons.append(f"🔎 descoberta: “{quote.strip()[:60]}”")
         elif fun:
             reasons.append(f"😂 engraçado: “{quote.strip()[:60]}”")
-        elif ratio < 0.15:
+        elif ratio < 0.15 and not liked:
             reasons.append("🤐 falou pouco no momento")
-        else:
+        elif not liked:
             reasons.append(f"🎙 falando: “{quote.strip()[:60]}”")
+        if liked:
+            reasons.append("⭐ parecido com cortes que você aprovou: " + ", ".join(liked[:3]))
     feats = {"sinal": signal / 10, "fala": ratio, "reacao": min(3, len(react)) / 3, "descoberta": min(3, len(disc)) / 3,
-             "engracado": min(3, len(fun)) / 3, "sem_fala": 0.0 if near else 1.0, "bug": min(2, len(bug)) / 2}
+             "engracado": min(3, len(fun)) / 3, "sem_fala": 0.0 if near else 1.0, "bug": min(2, len(bug)) / 2,
+             "nao_ouviu": 0.0, "curtido": min(2, len(liked)) / 2}
     final = 0.3 * signal + 0.7 * content      # o que ele fala pesa mais que o barulho
     learned = predict(feats)
     if learned is not None:
@@ -126,6 +138,7 @@ def speech_moment(text):
     t = _norm(text)
     found = _hits(t, REACTION) + _hits(t, DISCOVERY) + _hits(t, BUG) + _hits(t, FUNNY)
     strength = sum(0.5 if w in WEAK else 1.0 for w in dict.fromkeys(found))
+    strength += min(2, len(_liked(text))) * 1.0     # assunto que você curte (de cortes que você aprovou)
     if strength < 1:
         return 0.0
     excl = (text or "").count("!") + (text or "").count("?")

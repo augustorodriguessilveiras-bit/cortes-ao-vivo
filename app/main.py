@@ -3,6 +3,7 @@ import json
 import logging
 import secrets
 import shutil
+import threading
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -18,6 +19,7 @@ import urllib.parse
 import re
 
 from . import compile as compilado
+from . import likes
 from . import db, drive, meta, procs, quality, render, rules, settings, sources, transcribe, version, vod
 from .recorder import CLIP_POOL, ChannelWorker, edit_queue, make_horizontal_for, queue_render, after_insert, clip_paths, effective_trim, extra_fields, listen, rel, render_vertical_for
 
@@ -61,6 +63,10 @@ async def lifespan(app):
     # cortes de versões antigas: o texto que está no vídeo é o texto salvo
     db.execute("UPDATE clips SET overlay_applied=COALESCE(overlay,'') WHERE overlay_applied IS NULL")
     CLIP_POOL.submit(render.encoder)  # descobre a placa de vídeo logo no começo
+    try:
+        likes.rebuild()
+    except Exception:
+        plog.debug("não deu pra calcular os assuntos curtidos", exc_info=True)
     try:
         n = quality.backfill()
         if n:
@@ -334,6 +340,7 @@ def set_posted(clip_id: int, body: PostedIn):
     db.update("clips", clip_id, data)
     if posted:
         quality.record(clip_id, c.get("features"), 1)        # postou: esse é bom
+        threading.Thread(target=likes.rebuild, daemon=True).start()
     if body.views is not None:
         quality.train()                                       # aprende com as views
     res = {"ok": True, "posted_on": posted, "views": views, "freed_mb": 0}
@@ -341,6 +348,30 @@ def set_posted(clip_id: int, body: PostedIn):
         res["freed_mb"] = edit_clip(clip_id, ClipIn(status="postado"))["freed_mb"]
         res["status"] = "postado"
     return res
+
+
+@app.get("/api/likes")
+def likes_get():
+    d = likes.load()
+    show = d.get("show") or {}
+    return {"terms": [{"t": t, "show": show.get(t, t)} for t in (d.get("terms") or {})], "blocked": d.get("blocked", []), "n": d.get("n", 0),
+            "min": likes.MIN_CLIPS}
+
+
+class TermIn(BaseModel):
+    term: str
+
+
+@app.post("/api/likes/block")
+def likes_block(body: TermIn):
+    likes.block(body.term)
+    return likes_get()
+
+
+@app.post("/api/likes/reset")
+def likes_reset():
+    likes.unblock_all()
+    return likes_get()
 
 
 @app.get("/api/insights")
@@ -418,6 +449,8 @@ def edit_clip(clip_id: int, body: ClipIn):
         data["status_at"] = time.time()
         if data["status"] in ("aprovado", "postado"):
             quality.record(clip_id, c.get("features"), 1)      # aprende: esse você gostou
+            db.update("clips", clip_id, {"status": data["status"]})
+            threading.Thread(target=likes.rebuild, daemon=True).start()   # assuntos que você curte
         if data["status"] == "postado" and settings.get("posted_cleanup") and not c.get("files_deleted"):
             freed = _free_files(c, keep_thumb=True)      # já foi postado: libera o espaço do vídeo
             data["files_deleted"] = 1

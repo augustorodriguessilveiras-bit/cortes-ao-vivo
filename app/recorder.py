@@ -476,7 +476,10 @@ class ChannelWorker(threading.Thread):
         base_score, reasons = self._score_signal(t, hist)
         best = max((self.speech[s] for s in range(t, t + 3) if s in self.speech), default=None, key=lambda x: x[0])
         if best and best[0] >= base_score:
-            return best[0], reasons + [f"🗣 falou: “{best[1].strip()[:50]}”"]
+            from . import likes
+            liked = likes.match(best[1])
+            tag = f"⭐ assunto que você curte ({', '.join(liked[:2])}): " if liked else "🗣 falou: "
+            return best[0], reasons + [f"{tag}“{best[1].strip()[:50]}”"]
         return base_score, reasons
 
     def _score_signal(self, t, hist):
