@@ -141,7 +141,8 @@ def adapt(name, texts, kind="title"):
         if r.get("fem"):
             for a, b in (("O ", "A "), ("DO ", "DA "), ("PRO ", "PRA "), ("NO ", "NA "), ("AO ", "À "), ("COM O ", "COM A ")):
                 t = re.sub(rf"(?<![A-ZÀ-Ú]){a}{N}\b", f"{b}{N}", t)
-            for a, b in (("TRANQUILO", "TRANQUILA"), ("CHOCADO", "CHOCADA"), ("PRONTO", "PRONTA")):
+            for a, b in (("TRANQUILO", "TRANQUILA"), ("CHOCADO", "CHOCADA"), ("PRONTO", "PRONTA"), ("MALUCO", "MALUCA"),
+                         ("REVOLTADO", "REVOLTADA"), ("SOFRENDO", "SOFRENDO"), ("LOUCO", "LOUCA")):
                 t = t.replace(a, b)
         if r.get("safe") and UNSAFE.search(t):
             continue

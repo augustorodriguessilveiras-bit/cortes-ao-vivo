@@ -299,7 +299,8 @@ def list_clips(status: str = "", channel: str = "", limit: int = 300):
         c["rules"] = pub[c["channel_name"]]
         c["ov_secs"] = settings.get("ov_secs")   # cortes feitos antes das tags do YouTube ganham as tags agora
         if not c.get("yt_tags"):
-            c["yt_tags"] = meta.youtube_tags(c["channel_name"], c.get("platform") or "", c.get("cat") or "geral", c.get("subject"))
+            c["yt_tags"] = meta.youtube_tags(c["channel_name"], c.get("platform") or "", c.get("cat") or "geral", c.get("subject"),
+                                             c.get("theme") or "gta", _fut(c)[1])
             db.update("clips", c["id"], {"yt_tags": c["yt_tags"]})
         if c.get("rendering"):                      # posição na fila das edições
             c["queue_pos"] = 0 if c["id"] == now_id else (q_ids.index(c["id"]) + 1 if c["id"] in q_ids else None)
@@ -430,7 +431,7 @@ def insights():
             "by_cat": group(lambda r: cats.get(r["cat"] or "geral", r["cat"])),
             "by_channel": group(lambda r: rules.display(r["channel_name"])),
             "by_style": group(lambda r: "Dinâmico" if r["style"] == "dinamico" else "Padrão"),
-            "by_theme": group(lambda r: "React" if r["theme"] == "react" else "GTA"),
+            "by_theme": group(lambda r: {"react": "React", "futebol": "Futebol"}.get(r["theme"], "GTA")),
             "by_platform": sorted(([{"tiktok": "TikTok", "reels": "Reels", "shorts": "Shorts"}.get(k, k),
                                     round(sum(v) / len(v)), len(v)] for k, v in plat.items()), key=lambda x: -x[1])}
 
@@ -497,7 +498,7 @@ def new_title(clip_id: int):
     c = _clip(clip_id)
     import re as _re
     gain = max([float(x) for x in _re.findall(r"áudio \+(\d+) dB", c["reasons"] or "")] or [0])
-    raw, n_subject = meta.titles_for(c["channel_name"], c["cat"] or "geral", c["subject"], gain, c.get("theme") or "gta")
+    raw, n_subject = meta.titles_for(c["channel_name"], c["cat"] or "geral", c["subject"], gain, c.get("theme") or "gta", _fut(c))
     titles = [rules.title_with_tag(c["channel_name"], t) for t in raw]
     recent = [r["title"] for r in db.query("SELECT title FROM clips WHERE channel_name=? AND id<>? ORDER BY created_at DESC LIMIT 60",
                                            (c["channel_name"], clip_id))]
@@ -541,7 +542,8 @@ def new_hook(clip_id: int):
     subject = c["subject"] or meta.find_subject([c["transcript"] or ""] * 2)
     disp = rules.display(c["channel_name"])
     theme = c.get("theme") or "gta"
-    first, rest = meta.hooks_for(c["channel_name"], c["cat"] or "geral", subject if theme == "gta" else None, _gain(c), "", theme)
+    first, rest = meta.hooks_for(c["channel_name"], c["cat"] or "geral", subject if theme == "gta" else None, _gain(c), "", theme,
+                                 _fut(c))
     quotes = rules.adapt(c["channel_name"], meta.transcript_quotes(c["transcript"], disp), "hook")
     recent = {r["overlay"] for r in db.query("SELECT overlay FROM clips WHERE channel_name=? AND id<>? ORDER BY created_at DESC LIMIT 60",
                                              (c["channel_name"], clip_id))}
@@ -562,14 +564,19 @@ def new_hook(clip_id: int):
     return {"overlay": hook}
 
 
+def _fut(c):
+    """Tipo de lance e time (cortes de futebol), pelo que foi falado no corte."""
+    return meta.fut_info([c.get("transcript") or ""]) if (c.get("theme") == "futebol") else ("geral", None)
+
+
 class ThemeIn(BaseModel):
     theme: str
 
 
 @app.post("/api/clips/{clip_id}/theme")
 def set_theme(clip_id: int, body: ThemeIn):
-    """Troca o tema do corte (GTA ou react/outros) e refaz título, descrição, hashtags, tags e texto."""
-    if body.theme not in ("gta", "react"):
+    """Troca o tema do corte (GTA, react/outros ou futebol) e refaz título, descrição, hashtags, tags e texto."""
+    if body.theme not in ("gta", "react", "futebol"):
         raise HTTPException(400, "Tema inválido")
     c = _clip(clip_id)
     speech = [(0.0, 0.0, c["transcript"])] if c.get("transcript") else []
@@ -581,7 +588,25 @@ def set_theme(clip_id: int, body: ThemeIn):
     data = {k: m[k] for k in ("title", "title_idx", "descr", "tags", "yt_tags", "theme", "subject")}
     if (c.get("overlay_on") is None or c.get("overlay_on")) and m.get("overlay"):
         data["overlay"] = m["overlay"]
+    if body.theme == "futebol" and c.get("theme") != "futebol" and c.get("file_h") and not c.get("files_deleted"):
+        # futebol: corte mais longo, usando a sobra guardada (a jogada antes + a reação depois)
+        try:
+            hdur = render.probe(C.CLIPS_DIR / c["file_h"])[2]
+            before, after, _ = settings.window("futebol")
+            peak = c.get("peak_rel")
+            if peak is None:
+                peak = ((c.get("core_start") or 0) + (c.get("core_end") or hdur)) / 2
+            ts, te = max(0.0, peak - before), min(hdur, peak + after)
+            if te - ts > ((c.get("core_end") or hdur) - (c.get("core_start") or 0)) + 5:
+                data.update(trim_start=round(ts, 2), trim_end=round(te, 2), rendering=1, warn=None)
+                data["longer"] = round(te - ts)
+        except Exception:
+            pass
+    longer = data.pop("longer", None)
     db.update("clips", clip_id, data)
+    if longer:
+        queue_render(clip_id)
+        data["longer"] = longer
     return data
 
 
@@ -589,7 +614,8 @@ def set_theme(clip_id: int, body: ThemeIn):
 def regen_tags(clip_id: int):
     c = _clip(clip_id)
     subject = c["subject"] or meta.find_subject([c["transcript"] or ""] * 2)
-    tags = meta.youtube_tags(c["channel_name"], c.get("platform") or "", c.get("cat") or "geral", subject, c.get("theme") or "gta")
+    tags = meta.youtube_tags(c["channel_name"], c.get("platform") or "", c.get("cat") or "geral", subject, c.get("theme") or "gta",
+                             _fut(c)[1])
     db.update("clips", clip_id, {"yt_tags": tags})
     return {"yt_tags": tags}
 
@@ -844,7 +870,7 @@ def _process_vodclip(url, a, b, theme_in, count=1):
         if name in ("kick", "twitch", "youtube"):
             name = (info.get("uploader_id") or info.get("channel") or info.get("uploader") or name).lower().replace(" ", "")
         name = re.sub(r"[^a-z0-9_]", "", name.lower()) or "vod"
-        theme = theme_in if theme_in in ("gta", "react") else sources.guess_theme(info)
+        theme = theme_in if theme_in in ("gta", "react", "futebol") else sources.guess_theme(info)
         pad = float(settings.get("pad") or 0)
         start = max(0.0, a - pad)
         end = min(total, b + pad) if total else b + pad
@@ -936,7 +962,8 @@ def vod_clip(body: VodClipIn):
         # vários cortes: funciona igual ao VOD completo, só que dentro do trecho (ouve só ele, baixa só os cortes)
         nurl, name, plat, _ = sources.parse_link(url)
         vid = db.insert("vods", {"url": nurl, "name": name, "platform": plat, "added_at": time.time(),
-                                 "range_start": a, "range_end": b, "title": f"Trecho {_fmt_t(a)} até {_fmt_t(b)}"})
+                                 "range_start": a, "range_end": b, "title": f"Trecho {_fmt_t(a)} até {_fmt_t(b)}",
+                                 "theme": body.theme if body.theme in ("gta", "react", "futebol") else None})
         vod.enqueue(vid)
         vod.to_front(vid)                       # você pediu agora: passa na frente dos VODs completos
         plog.info("✂ Procurando os melhores momentos do trecho %s até %s do VOD…", _fmt_t(a), _fmt_t(b))
@@ -959,7 +986,7 @@ async def upload_clip(request: Request, name: str, platform: str = "kick", theme
         raise HTTPException(400, "Escreva de qual streamer é o corte.")
     if platform not in PLATFORM_URL:
         platform = "kick"
-    theme = theme if theme in ("gta", "react") else "gta"
+    theme = theme if theme in ("gta", "react", "futebol") else "gta"
     up = C.CLIPS_DIR / "enviados"
     up.mkdir(parents=True, exist_ok=True)
     raw = up / f"_recebendo_{int(time.time() * 1000)}{ext}"

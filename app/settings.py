@@ -21,6 +21,7 @@ DEFAULTS = {
     "audio_mode": "auto",              # auto: só mexe se estiver muito baixo ou estourando · off: nunca mexe
     "pad": 30,                         # sobra guardada antes e depois do corte (pra puxar mais no editor)
     "vod_parallel": 2,                 # quantos VODs são processados ao mesmo tempo (1 a 3)
+    "dur_futebol": 120,                # cortes de futebol (streamer reagindo a jogo) são mais longos
     "style": "padrao",                 # estilo dos cortes novos: padrao · dinamico (zoom e começo/fim esperto)
 }
 _lock = threading.Lock()
@@ -37,8 +38,19 @@ def get_all():
     data["before"] = round(dur * 2 / 3)        # mais tempo antes: o corte mostra o que levou ao momento
     data["after"] = dur - data["before"]
     data["gap"] = max(15, min(180, int(data["gap"])))
+    data["dur_futebol"] = max(45, min(180, int(data["dur_futebol"])))
     data["cooldown"] = data["gap"]             # nome antigo, usado em alguns lugares
     return data
+
+
+def window(theme):
+    """(segundos antes do momento, segundos depois, intervalo mínimo) pra esse tema."""
+    d = get_all()
+    if theme == "futebol":
+        dur = d["dur_futebol"]
+        before = round(dur * 0.6)        # a jogada inteira antes do lance + a reação depois
+        return before, dur - before, max(d["gap"], round(dur * 0.6))
+    return d["before"], d["after"], d["gap"]
 
 
 def get(key):

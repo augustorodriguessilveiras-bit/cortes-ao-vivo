@@ -243,7 +243,7 @@ class ChannelWorker(threading.Thread):
         if self.status != "gravando":
             return False
         now = time.time()
-        dur = settings.get_all()["dur"]
+        dur = sum(settings.window(self.theme)[:2])
         with self._lock:
             self.jobs.append({"start": now - (dur - 5), "end": now + 5, "score": 10.0,
                               "reasons": ["corte manual"], "peak": now})
@@ -387,7 +387,8 @@ class ChannelWorker(threading.Thread):
             info = info or sources.resolve(self.url, "worst")
             new = sources.guess_theme(info)
             if new != self.theme:
-                log.info("🎮 %s: tema da live agora é %s", self.name, "GTA" if new == "gta" else "react/outros")
+                log.info("🎮 %s: tema da live agora é %s", self.name,
+                         {"gta": "GTA", "futebol": "futebol (reagindo a jogo) ⚽"}.get(new, "react/outros"))
             self.theme = new
         except Exception:
             pass
@@ -475,9 +476,15 @@ class ChannelWorker(threading.Thread):
                 safe_unlink(wav)
                 safe_unlink(lst)
 
+    def _cfg(self):
+        """Ajustes com a janela do tema da live (futebol = cortes mais longos)."""
+        cfg = dict(settings.get_all())
+        cfg["before"], cfg["after"], cfg["gap"] = settings.window(self.theme)
+        return cfg
+
     def _speech_hit(self, sec, sc, text):
         """Frase forte ouvida na live: vira corte (se não tiver outro corte perto). Não espera o áudio/chat."""
-        cfg = settings.get_all()
+        cfg = self._cfg()
         if sc < cfg["min_score"]:
             return
         with self._lock:
@@ -527,7 +534,7 @@ class ChannelWorker(threading.Thread):
             limit = min(limit, int(time.time()) - 18)
         if not self.scored_until and self.segments:
             self.scored_until = int(self.segments[0][0])
-        cfg = settings.get_all()
+        cfg = self._cfg()
         for t in range(self.scored_until, limit):
             score, reasons = self._score_second(t)
             self.scored_until = t + 1
@@ -551,7 +558,7 @@ class ChannelWorker(threading.Thread):
         self.stats["momentos"] += 1
         if any(r.startswith("🗣") for r in p["reasons"]):
             self.stats["pela_fala"] += 1
-        cfg = settings.get_all()
+        cfg = self._cfg()
         with self._lock:
             self.jobs.append({"start": p["peak"] - cfg["before"], "end": p["peak"] + cfg["after"],
                               "score": p["score"], "reasons": p["reasons"], "peak": p["peak"]})

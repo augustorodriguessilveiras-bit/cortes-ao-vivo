@@ -130,6 +130,15 @@ Instale nos dois PCs do mesmo jeito: Python, extrair o zip e `INICIAR.bat`.
 - **Intervalo mínimo entre cortes** (Ajustes, padrão 40s): quanto menor, mais cortes seguidos.
 - O cartão da live mostra quantos momentos foram achados, quantos viraram corte e se o chat e a fala estão ativos.
 
+## ⚽ Futebol (streamer reagindo a jogo)
+
+- O programa reconhece pelo título/categoria da live ou do VOD (futebol, Flamengo, Brasileirão, Libertadores...),
+  ou você escolhe "⚽ Futebol" no corte, no trecho de VOD ou no corte enviado.
+- Cortes mais longos (2 min por padrão, ajustável em Ajustes): a jogada inteira antes do lance e a reação depois.
+- Acha os lances pelo grito e pelo que ele fala ("gol", "golaço", "na trave", "pênalti", "juiz ladrão", "que defesa"...).
+- Títulos, hashtags e tags de futebol, com o time quando ele falar (ex: "A REAÇÃO DO RENATO A ESSE GOL DO FLAMENGO").
+- Trocar um corte pronto pra "⚽ Futebol" deixa ele mais longo sozinho, usando a sobra guardada.
+
 ## Recursos dos cortes
 
 - **Sobra antes e depois:** cada corte guarda 30s a mais antes e depois (muda em Ajustes). No ✂ Editar corte, puxe

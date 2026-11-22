@@ -83,8 +83,16 @@ REACT_WORDS = ("react", "reagindo", "reacao", "reação", "assistindo", "vendo v
                "just chatting", "conversando", "bate papo", "bate-papo", "irl", "papo")
 
 
+FOOT_WORDS = ("futebol", "brasileirao", "brasileirão", "libertadores", "copa do brasil", "champions", "sul-americana",
+              "sulamericana", "flamengo", "palmeiras", "corinthians", "são paulo", "sao paulo", "vasco", "botafogo",
+              "fluminense", "grêmio", "gremio", "cruzeiro", "atlético", "atletico", "santos", "seleção", "selecao",
+              "real madrid", "barcelona", "premier league", "assistindo o jogo", "assistindo jogo", "vendo o jogo",
+              "react jogo", "reagindo ao jogo", "jogo do", "copa do mundo", "eliminatórias", "eliminatorias", " sports ",
+              "esportes", "football", "soccer", "kings league", "pré-jogo", "pre-jogo", "pós-jogo", "pos-jogo")
+
+
 def guess_theme(info):
-    """'gta' ou 'react' pelo título e categoria. Na dúvida, GTA (o foco)."""
+    """'gta', 'futebol' ou 'react' pelo título e categoria. Na dúvida, GTA (o foco)."""
     if not info:
         return "gta"
     parts = [info.get("title") or "", info.get("description") or "", info.get("category") or "",
@@ -92,6 +100,8 @@ def guess_theme(info):
     text = " " + " ".join(parts).lower() + " "
     if any(w in text for w in GTA_WORDS):
         return "gta"
+    if any(w in text for w in FOOT_WORDS):
+        return "futebol"
     if any(w in text for w in REACT_WORDS):
         return "react"
     return "gta"

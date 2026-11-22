@@ -29,6 +29,19 @@ BUG = ["bug", "bugou", "bugado", "glitch", "atravessou", "atravessei", "caiu do 
 FUNNY = ["kkk", "haha", "hehe", "rsrs", "risos", "zoeira", "que vergonha", "ridiculo", "palhaco", "kkkk",
          "to rindo", "morrendo de rir", "chorando de rir", "piada"]
 
+# futebol (streamer reagindo a jogo): lances
+FOOT = re.compile(r"\b(gol|golaco|go+l+|e gol|penalti|penalty|na trave|no travessao|que defesa|defendeu|milagre|"
+                  r"expulso|cartao vermelho|var|impedido|impedimento|juiz ladrao|ladrao|roubado|roubaram|que lance|"
+                  r"que jogada|caneta|chapeu|drible|isolou|como perde|nao acredito|u+h+|balancou a rede|no angulo|"
+                  r"contra ataque|olha o gol|vai vai vai|chuta|bateu)\b")
+FOOT_WEAK = {"chuta", "bateu", "drible", "defendeu", "var", "impedido", "impedimento"}
+
+
+def foot_hits(text):
+    """Lances de futebol na frase (já normalizada)."""
+    return [m.group(1) for m in FOOT.finditer(text)]
+
+
 WIN_BEFORE, WIN_AFTER = 10.0, 12.0     # janela ao redor do momento forte (segundos)
 MODEL_PATH = C.DATA_DIR / "aprendizado.json"
 FEATS = ["sinal", "fala", "reacao", "descoberta", "engracado", "sem_fala", "bug", "nao_ouviu", "curtido", "descartado"]
@@ -99,6 +112,7 @@ def evaluate(signal, speech, peak_rel, dur=None):
     whole = _norm(" ".join(t for _, _, t in speech))
     react, disc, fun = _hits(text, REACTION), _hits(text, DISCOVERY), _hits(whole, FUNNY)
     bug = _hits(text, BUG)
+    foot = foot_hits(text)          # lance de futebol (gol, pênalti, que defesa...)
     liked = _liked(text)            # assuntos parecidos com os cortes que você aprovou
     bad = _disliked(text)           # assuntos parecidos com os cortes que você descartou
     excl = sum(t.count("!") + t.count("?") for _, _, t in near)
@@ -108,10 +122,13 @@ def evaluate(signal, speech, peak_rel, dur=None):
         reasons.append("🔇 ninguém falou perto do momento (pode ser só barulho do jogo)")
     else:
         content = 2.0 + min(2.0, ratio * 3) + min(5.0, len(react) * 1.8) + min(4.0, len(disc) * 1.8) \
-            + min(4.5, len(bug) * 2.2) + min(4.0, len(fun) * 1.6) + min(0.8, excl * 0.2) + min(3.0, len(liked) * 1.6) - min(3.0, len(bad) * 1.5)
+            + min(4.5, len(bug) * 2.2) + min(4.0, len(fun) * 1.6) + min(0.8, excl * 0.2) + min(3.0, len(liked) * 1.6) - min(3.0, len(bad) * 1.5) + min(4.5, len(foot) * 1.8)
         content = max(0.0, min(10.0, content))
-        quote = max(near, key=lambda x: len(_hits(_norm(x[2]), REACTION + DISCOVERY + FUNNY + BUG)) * 10 + min(len(x[2]), 60))[2]
-        if bug:
+        quote = max(near, key=lambda x: (len(_hits(_norm(x[2]), REACTION + DISCOVERY + FUNNY + BUG)) + len(foot_hits(_norm(x[2])))) * 10
+                    + min(len(x[2]), 60))[2]
+        if foot and len(foot) >= len(react):
+            reasons.append(f"⚽ lance: “{quote.strip()[:60]}”")
+        elif bug:
             reasons.append(f"🐞 bug no jogo: “{quote.strip()[:60]}”")
         elif disc and len(disc) >= len(react):
             reasons.append(f"🔎 descoberta: “{quote.strip()[:60]}”")
@@ -155,6 +172,7 @@ def speech_moment(text):
     t = _norm(text)
     found = _hits(t, REACTION) + _hits(t, DISCOVERY) + _hits(t, BUG) + _hits(t, FUNNY)
     strength = sum(0.5 if w in WEAK else 1.0 for w in dict.fromkeys(found))
+    strength += sum(0.5 if w in FOOT_WEAK else 1.0 for w in dict.fromkeys(foot_hits(t)))   # lance de futebol
     strength += min(2, len(_liked(text))) * 1.0     # assunto que você curte (de cortes que você aprovou)
     strength -= min(2, len(_disliked(text))) * 0.75  # assunto que você costuma descartar
     if strength < 1:

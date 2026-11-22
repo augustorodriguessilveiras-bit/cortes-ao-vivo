@@ -208,7 +208,7 @@ details.meta[open] summary{margin-bottom:6px}
       <input type="text" id="upName" list="upNames" placeholder="De qual streamer? (ex: orenatovicente)" autocomplete="off" style="max-width:280px">
       <datalist id="upNames"></datalist>
       <select id="upPlat"><option value="kick">Kick</option><option value="twitch">Twitch</option><option value="youtube">YouTube</option></select>
-      <select id="upTheme"><option value="gta">GTA</option><option value="react">React (vídeo, filme, outro jogo)</option></select>
+      <select id="upTheme"><option value="gta">GTA</option><option value="futebol">⚽ Futebol (reagindo a jogo)</option><option value="react">React (vídeo, filme, outro jogo)</option></select>
       <button class="primary" id="upBtn">📤 Enviar</button>
     </div>
     <div id="upProg" class="muted" hidden></div>
@@ -218,7 +218,7 @@ details.meta[open] summary{margin-bottom:6px}
       <input type="text" id="tcFrom" placeholder="De (ex: 3:13:00)" autocomplete="off" style="max-width:140px;min-width:110px;flex:0 1 140px">
       <input type="text" id="tcTo" placeholder="Até (ex: 3:15:00)" autocomplete="off" style="max-width:140px;min-width:110px;flex:0 1 140px">
       <select id="tcCount"><option value="1">1 corte (o trecho todo)</option><option value="0">Vários cortes (todos os momentos bons do trecho)</option></select>
-      <select id="tcTheme"><option value="auto">Tema: automático</option><option value="gta">GTA</option><option value="react">React / outros</option></select>
+      <select id="tcTheme"><option value="auto">Tema: automático</option><option value="gta">GTA</option><option value="futebol">⚽ Futebol (reagindo a jogo)</option><option value="react">React / outros</option></select>
       <button class="primary" id="tcBtn">✂ Cortar esse trecho</button>
     </div>
     <div id="tcInfo" class="muted"></div>
@@ -231,6 +231,7 @@ details.meta[open] summary{margin-bottom:6px}
     <span class="wide muted" id="learnInfo"></span>
     <span class="wide muted" id="speechInfo"></span>
     <label>Duração do corte <input type="range" id="dur" min="20" max="90" step="5"><output></output></label>
+    <label>Duração dos cortes de futebol ⚽ <input type="range" id="dur_futebol" min="45" max="180" step="15"><output></output></label>
     <label>Intervalo mínimo entre cortes <input type="range" id="gap" min="15" max="180" step="5"><output></output></label>
     <label><input type="checkbox" id="live_speech"> Ouvir a fala das lives pra achar mais momentos</label>
     <label><input type="checkbox" id="vod_listen_all"> Ouvir a fala do VOD inteiro (mais preciso, demora mais)</label>
@@ -626,8 +627,8 @@ async function flushSettings(){
 window.addEventListener("beforeunload", () => { if (Object.keys(pendingSet).length) navigator.sendBeacon?.("/api/settings", new Blob([JSON.stringify(pendingSet)], { type: "application/json" })); });
 function bindSettings(){
   if (settingsBound) return; settingsBound = true;
-  const fmt = { auto_clean_days: v => +v === 0 ? "nunca" : `${v} dia${+v > 1 ? "s" : ""}`, max_gb: v => +v === 0 ? "sem limite" : `${v} GB`, gap: v => `${v}s`, live_speech: v => v, vod_listen_all: v => v, vod_parallel: v => (+v === 1 ? "1 (um de cada vez)" : +v === 3 ? "3 (só se o PC for forte)" : `${v}`) + (+v > 1 ? " · com live gravando: 1" : ""), pad: v => +v === 0 ? "nenhuma" : `${v}s antes e ${v}s depois`, style: v => v, min_score: v => (+v).toFixed(1), discard_below: v => +v === 0 ? "nunca" : (+v).toFixed(1), dur: v => `${v}s (${Math.round(v * 2 / 3)}s antes do momento, ${v - Math.round(v * 2 / 3)}s depois)`, vod_max: v => v, ov_secs: v => +v > 40 ? "o vídeo todo" : v + "s" };
-  for (const id of ["min_score", "discard_below", "dur", "vod_max", "ov_secs", "ov_on", "tags", "audio_mode", "posted_cleanup", "pad", "style", "vod_parallel", "gap", "live_speech", "vod_listen_all", "auto_clean_days", "max_gb"]){
+  const fmt = { dur_futebol: v => `${Math.floor(v / 60)}min${v % 60 ? (" " + (v % 60) + "s") : ""} (o lance inteiro + a reação)`, auto_clean_days: v => +v === 0 ? "nunca" : `${v} dia${+v > 1 ? "s" : ""}`, max_gb: v => +v === 0 ? "sem limite" : `${v} GB`, gap: v => `${v}s`, live_speech: v => v, vod_listen_all: v => v, vod_parallel: v => (+v === 1 ? "1 (um de cada vez)" : +v === 3 ? "3 (só se o PC for forte)" : `${v}`) + (+v > 1 ? " · com live gravando: 1" : ""), pad: v => +v === 0 ? "nenhuma" : `${v}s antes e ${v}s depois`, style: v => v, min_score: v => (+v).toFixed(1), discard_below: v => +v === 0 ? "nunca" : (+v).toFixed(1), dur: v => `${v}s (${Math.round(v * 2 / 3)}s antes do momento, ${v - Math.round(v * 2 / 3)}s depois)`, vod_max: v => v, ov_secs: v => +v > 40 ? "o vídeo todo" : v + "s" };
+  for (const id of ["min_score", "discard_below", "dur", "vod_max", "ov_secs", "ov_on", "tags", "audio_mode", "posted_cleanup", "pad", "style", "vod_parallel", "gap", "live_speech", "vod_listen_all", "auto_clean_days", "max_gb", "dur_futebol"]){
     const el = $("#" + id), out = el.parentElement.querySelector("output"), val = ST.settings[id];
     if (el.type === "checkbox") el.checked = !!val; else el.value = val;
     if (out) out.textContent = fmt[id](val);
@@ -680,7 +681,7 @@ function renderClips(force){
       ${c.title ? `<div class="ctitle">${esc(c.title)}</div>` : ""}
       ${c.rules ? ruleBox(c) : ""}
       <div class="reasons">${esc(c.reasons)}</div>
-      <div class="fmt">${c.theme === "react" ? "📺 Tema: react / outros" : "🎮 Tema: GTA 6"}</div>
+      <div class="fmt">${c.theme === "react" ? "📺 Tema: react / outros" : c.theme === "futebol" ? "⚽ Tema: futebol (reagindo a jogo)" : "🎮 Tema: GTA 6"}</div>
       ${c.layout_used ? `<div class="fmt">📐 Formato: ${{ cam: "câmera em cima + gameplay", full: "tela cheia (full cam)", game: "só gameplay" }[c.layout_used] || c.layout_used}${(c.layout || "auto") === "auto" ? " (automático)" : ""}</div>` : ""}
       ${c.audio_info ? `<div class="fmt">🔊 ${esc(c.audio_info)}</div>` : ""}
       ${c.warn ? `<div class="warn">⚠ ${esc(c.warn)}</div>` : ""}
@@ -711,7 +712,7 @@ function renderClips(force){
       </div>
       <details class="meta" data-id="${id}" ${openMeta.has(id) ? "open" : ""}>
         <summary>📝 Título, descrição e hashtags</summary>
-        <label>🎮 Tema do corte<select data-theme="${id}"><option value="gta" ${(c.theme || "gta") === "gta" ? "selected" : ""}>GTA 6 (jogando)</option><option value="react" ${c.theme === "react" ? "selected" : ""}>React / outros (assistindo vídeo, TikTok, papo)</option></select></label>
+        <label>🎮 Tema do corte<select data-theme="${id}"><option value="gta" ${(c.theme || "gta") === "gta" ? "selected" : ""}>GTA 6 (jogando)</option><option value="futebol" ${c.theme === "futebol" ? "selected" : ""}>⚽ Futebol (reagindo a jogo)</option><option value="react" ${c.theme === "react" ? "selected" : ""}>React / outros (assistindo vídeo, TikTok, papo)</option></select></label>
         <label>Título<input type="text" data-f="title" data-id="${id}" value="${esc(c.title)}"></label>
         <label>Descrição<textarea data-f="descr" data-id="${id}">${esc(c.descr)}</textarea></label>
         <label>Hashtags<textarea data-f="tags" data-id="${id}">${esc(c.tags)}</textarea></label>
@@ -1116,8 +1117,9 @@ $("#clips").addEventListener("change", async e => {
   const tid = +e.target.dataset.theme;
   if (tid){
     try {
-      await post(`/api/clips/${tid}/theme`, { theme: e.target.value }); openMeta.add(tid); frames.delete(tid);
-      toast("Título, descrição, hashtags e tags refeitos pro tema novo. O texto do vídeo também mudou: clique em \"Aplicar no vídeo\" pra colocar ele no vídeo.", 8000);
+      const r = await post(`/api/clips/${tid}/theme`, { theme: e.target.value }); openMeta.add(tid); frames.delete(tid);
+      toast(r.longer ? `⚽ Tema futebol: título, hashtags e tags refeitos, e o corte ficou mais longo (${r.longer}s, com a jogada e a reação). Refazendo o vídeo…`
+        : "Título, descrição, hashtags e tags refeitos pro tema novo. O texto do vídeo também mudou: clique em \"Aplicar no vídeo\" pra colocar ele no vídeo.", 9000);
       loadClips(true);
     } catch (err) { toast(err.message); }
     return;

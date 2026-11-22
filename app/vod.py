@@ -261,7 +261,11 @@ def _process(vod_id):
     if name in ("kick", "twitch", "youtube"):
         name = (light.get("uploader_id") or light.get("channel") or light.get("uploader") or name).lower().replace(" ", "")
     _set(vod_id, title=title[:200], name=name)
-    theme = sources.guess_theme(light)
+    theme = v.get("theme") if v.get("theme") in ("gta", "react", "futebol") else sources.guess_theme(light)
+    cfg = dict(cfg)
+    cfg["before"], cfg["after"], cfg["cooldown"] = settings.window(theme)   # futebol: cortes mais longos
+    if theme == "futebol":
+        log.info("⚽ VOD de %s: é jogo de futebol, os cortes saem com %ds", v["name"], cfg["before"] + cfg["after"])
     # trecho escolhido por você (de/até): só essa parte do VOD é ouvida e cortada
     rs = float(v.get("range_start") or 0)
     re_ = float(v["range_end"]) if v.get("range_end") else None

@@ -270,6 +270,75 @@ REACT_HOOKS = ["OLHA A REAÇÃO DO {N} NO FINAL 😂", "O {N} NÃO ESPERAVA ESSE
                "O {N} VIU ESSE VÍDEO E NÃO AGUENTOU KKKKK", "ESSE VÍDEO QUEBROU O {N} KKKKK", "A REAÇÃO DO {N} A ISSO 😂"]
 
 
+# ------------------------------------------------------------ tema futebol (streamer reagindo a jogo)
+TEAMS = {  # como aparece na fala (sem acento) -> como vai no título
+    "flamengo": "FLAMENGO", "mengao": "FLAMENGO", "palmeiras": "PALMEIRAS", "verdao": "PALMEIRAS",
+    "corinthians": "CORINTHIANS", "timao": "CORINTHIANS", "sao paulo": "SÃO PAULO", "vasco": "VASCO",
+    "botafogo": "BOTAFOGO", "fluminense": "FLUMINENSE", "gremio": "GRÊMIO", "internacional": "INTER",
+    "atletico": "ATLÉTICO", "galo": "ATLÉTICO", "cruzeiro": "CRUZEIRO", "santos": "SANTOS", "bahia": "BAHIA",
+    "fortaleza": "FORTALEZA", "sport": "SPORT", "ceara": "CEARÁ", "vitoria": "VITÓRIA", "bragantino": "BRAGANTINO",
+    "real madrid": "REAL MADRID", "barcelona": "BARCELONA", "barca": "BARCELONA", "psg": "PSG",
+    "manchester": "MANCHESTER", "liverpool": "LIVERPOOL", "chelsea": "CHELSEA", "arsenal": "ARSENAL",
+    "bayern": "BAYERN", "juventus": "JUVENTUS", "milan": "MILAN", "inter de milao": "INTER DE MILÃO",
+    "boca": "BOCA", "river": "RIVER", "selecao": "SELEÇÃO", "brasil": "SELEÇÃO", "argentina": "ARGENTINA",
+}
+FUT_KINDS = {   # tipo de lance -> palavras na fala
+    "gol": ["gol", "golaco", "goool", "gooo", "e gol", "e dele", "balancou a rede", "no angulo", "que golaco"],
+    "quase": ["na trave", "no travessao", "perdeu", "quase", "como perde", "nao acredito que perdeu", "uuuh", "isolou"],
+    "juiz": ["juiz", "var", "penalti", "penalty", "ladrao", "roubado", "roubaram", "impedido", "impedimento",
+             "expulso", "vermelho", "cartao", "falta", "arbitro"],
+    "defesa": ["defendeu", "que defesa", "goleiro", "pegou", "milagre", "paredao"],
+    "jogada": ["que jogada", "que lance", "drible", "caneta", "chapeu", "lindo", "olha isso", "que passe", "golaco"],
+}
+FUT_TITLES = {
+    "gol": ["A REAÇÃO DO {N} A ESSE GOL{DO_T} ⚽🔥", "O {N} FOI À LOUCURA COM ESSE GOL{DO_T} ⚽", "O {N} COMEMORANDO GOL{DO_T} 😂⚽",
+            "O GOL{DO_T} QUE DEIXOU O {N} MALUCO ⚽🔥", "O {N} NÃO ACREDITOU NESSE GOL ⚽😱"],
+    "quase": ["O {N} NÃO ACREDITOU NESSE LANCE ⚽😱", "COMO PERDE ISSO? A REAÇÃO DO {N} 😭⚽", "O {N} SOFRENDO{COM_T} ⚽😭",
+              "QUASE! A CARA DO {N} NESSE LANCE ⚽😳"],
+    "juiz": ["O {N} PERDEU A PACIÊNCIA COM O JUIZ ⚽😡", "O {N} REVOLTADO COM ESSE LANCE ⚽😡", "A REAÇÃO DO {N} AO VAR ⚽😤",
+             "O {N} NÃO ACEITOU ESSA ARBITRAGEM ⚽😡"],
+    "defesa": ["QUE DEFESA! A REAÇÃO DO {N} ⚽🧤", "O {N} NÃO ACREDITOU NESSA DEFESA ⚽😱"],
+    "jogada": ["QUE LANCE! O {N} FICOU SEM PALAVRAS ⚽😶", "O {N} REAGINDO A ESSA JOGADA ⚽🔥", "ESSA JOGADA DEIXOU O {N} MALUCO ⚽"],
+    "geral": ["O {N} REAGINDO AO JOGO{DO_T} ⚽", "O {N} ASSISTINDO JOGO É OUTRO NÍVEL ⚽😂", "A REAÇÃO DO {N} NESSE LANCE ⚽😳",
+              "O {N} VENDO FUTEBOL É SEMPRE ASSIM ⚽😂", "MELHORES MOMENTOS DO {N} REAGINDO{AO_T} ⚽"],
+}
+FUT_HOOKS = {
+    "gol": ["ESPERA A REAÇÃO DO {N} NO GOL ⚽🔥", "OLHA O {N} QUANDO SAI O GOL ⚽😂", "O {N} NO MOMENTO DO GOL KKKKK ⚽"],
+    "quase": ["O {N} NÃO ACREDITOU NESSE LANCE ⚽😱", "OLHA A CARA DO {N} KKKKK ⚽", "QUASE! A REAÇÃO DO {N} ⚽😭"],
+    "juiz": ["O {N} REVOLTADO COM O JUIZ ⚽😡", "ESPERA O {N} VER ESSE LANCE ⚽😤"],
+    "defesa": ["QUE DEFESA! OLHA O {N} ⚽🧤", "ESPERA A REAÇÃO DO {N} ⚽😱"],
+    "jogada": ["OLHA ESSA JOGADA E A REAÇÃO DO {N} ⚽🔥", "O {N} FICOU SEM PALAVRAS ⚽😶"],
+    "geral": ["A REAÇÃO DO {N} NESSE LANCE ⚽😳", "O {N} ASSISTINDO JOGO KKKKK ⚽", "ESPERA ATÉ O FINAL ⚽😱"],
+}
+
+
+def fut_info(texts):
+    """Tipo de lance e time mais falado no corte: (tipo, TIME ou None)."""
+    t = " " + " ".join(_norm(x) for x in texts) + " "
+    score = {k: sum(t.count(f" {w}") for w in ws) for k, ws in FUT_KINDS.items()}
+    kind = max(score, key=score.get) if max(score.values()) > 0 else "geral"
+    teams = {}
+    for k, v in TEAMS.items():
+        n = t.count(f" {k} ")
+        if n:
+            teams[v] = teams.get(v, 0) + n
+    team = max(teams, key=teams.get) if teams else None
+    return kind, team
+
+
+def _fut_fill(texts, N, team):
+    out = []
+    for x in texts:
+        if ("{DO_T}" in x or "{COM_T}" in x or "{AO_T}" in x) and not team:
+            x = x.replace("{DO_T}", "").replace("{COM_T}", "").replace("{AO_T}", "")
+        art = "DA" if team == "SELEÇÃO" else "DO"
+        x = x.replace("{DO_T}", f" {art} {team}" if team else "").replace("{COM_T}", f" COM O {team}" if team else "")
+        x = x.replace("{AO_T}", f" AO {team}" if team else "").replace("{N}", N)
+        if x not in out:
+            out.append(re.sub(r"\s{2,}", " ", x).strip())
+    return out
+
+
 def degta(texts):
     """Tira as menções ao GTA dos textos (pra cortes de react/outros). Os que dependem do GTA saem da lista."""
     out = []
@@ -283,12 +352,26 @@ def degta(texts):
     return out
 
 
-def youtube_tags(channel, platform, cat, subject=None, theme="gta"):
+def youtube_tags(channel, platform, cat, subject=None, theme="gta", team=None):
     """Tags pro campo "Tags" do YouTube (separadas por vírgula, até 500 caracteres)."""
     n = channel.lower()
     plat = PLAT.get(platform, "").lower()
     r = rules.for_channel(channel)
     tags = list(r.get("yt_tags", [])) if r else []
+    if theme == "futebol":
+        d = rules.display(channel).lower()
+        tags = [t for t in tags if "gta" not in t]
+        tm = (team or "").lower()
+        tags += ([tm, f"{tm} hoje", f"{d} {tm}", f"{tm} reação", f"jogo do {tm}"] if tm else []) + \
+            ["futebol", "reação futebol", "react futebol", f"{d} futebol", f"{d} reagindo", f"{n} react",
+             "futebol brasileiro", "melhores momentos", "gol", "reação ao gol", f"cortes {n}", f"cortes do {d}",
+             "brasileirão", "libertadores", "shorts futebol", "cortes de live"]
+        out, size = [], 0
+        for t in tags:
+            if t and t not in out and size + len(t) + 2 <= 480:
+                out.append(t)
+                size += len(t) + 2
+        return ", ".join(out)
     if theme == "react":
         tags = [t for t in tags if "gta" not in t]
         tags += ["react", f"{n} react", f"react {n}", f"{n} reagindo", "reação", "reagindo a vídeos", n,
@@ -319,9 +402,18 @@ def youtube_tags(channel, platform, cat, subject=None, theme="gta"):
     return ", ".join(out)
 
 
-def titles_for(channel, cat, subject, gain=0, theme="gta"):
+def titles_for(channel, cat, subject, gain=0, theme="gta", fut=None):
     """Títulos possíveis já ajustados pras regras do canal. Retorna (lista, quantos do começo são ligados à cena)."""
     disp = rules.display(channel)
+    if theme == "futebol":
+        N = disp.upper()
+        kind, team = fut or ("geral", None)
+        first = _fut_fill(FUT_TITLES.get(kind, []), N, team)
+        rest = _fut_fill([t for k, v in FUT_TITLES.items() if k != kind for t in v], N, team)
+        extra = set(rules.adapt(channel, [], "title"))          # títulos "seguros" de GTA da regra: fora do futebol
+        fa = [t for t in rules.adapt(channel, first, "title") if t not in extra]
+        ra = [t for t in rules.adapt(channel, rest, "title") if t not in extra and t not in fa]
+        return fa + ra, len(fa)
     if theme == "react":
         N = disp.upper()
         react = [t.replace("{N}", N) for t in REACT_TITLES]
@@ -343,9 +435,17 @@ def titles_for(channel, cat, subject, gain=0, theme="gta"):
     return full, n
 
 
-def hooks_for(channel, cat, subject, gain=0, quote="", theme="gta"):
+def hooks_for(channel, cat, subject, gain=0, quote="", theme="gta", fut=None):
     """Textos da faixa ajustados pras regras do canal. Retorna (ligados ao corte, outros)."""
     disp = rules.display(channel)
+    if theme == "futebol":
+        N = disp.upper()
+        kind, team = fut or ("geral", None)
+        first = _fut_fill(FUT_HOOKS.get(kind, []), N, team)
+        rest = _fut_fill([t for k, v in FUT_HOOKS.items() if k != kind for t in v], N, team)
+        extra = set(rules.adapt(channel, [], "hook"))
+        fa = [t for t in rules.adapt(channel, first, "hook") if t not in extra]
+        return fa, [t for t in rules.adapt(channel, rest, "hook") if t not in extra and t not in fa]
     if theme == "react":
         N = disp.upper()
         first, rest = hook_options(cat, disp, None, gain, quote)
@@ -368,10 +468,11 @@ def make_meta(channel, platform, url, lines=(), manual=False, gain=0, avoid=(), 
         n = sum(1 for l in lines if rx.search(l)) + 2 * sum(1 for l in (near or spoken) if rx.search(l))
         if n > best:
             cat, best = k, n
-    subject = find_subject(lines + spoken + near * 3) if theme != "react" else None
+    subject = find_subject(lines + spoken + near * 3) if theme == "gta" else None
+    fut = fut_info(spoken + near * 2 + lines) if theme == "futebol" else None
     rule = rules.for_channel(channel)
     disp = rules.display(channel)            # ex: "orenatovicente" aparece como "Renato" nos textos
-    titles, n_subject = titles_for(channel, cat, subject, gain, theme)
+    titles, n_subject = titles_for(channel, cat, subject, gain, theme, fut)
     raw_title = pick_title(titles, max(0, n_subject), avoid)
     title = rules.title_with_tag(channel, raw_title)
     chat_top = top_message(lines)
@@ -382,7 +483,9 @@ def make_meta(channel, platform, url, lines=(), manual=False, gain=0, avoid=(), 
     lead = CATS[cat]["lead"]
     if rules.is_safe(channel) and cat in ("fail", "susto"):
         lead = "Melhor momento"
-    desc = f"{lead} {do} {Nn} ao vivo no GTA 6 🎮" if theme != "react" else f"{lead} {do} {Nn} reagindo ao vivo 🎥"
+    desc = f"{lead} {do} {Nn} ao vivo no GTA 6 🎮" if theme == "gta" else f"{lead} {do} {Nn} reagindo ao vivo 🎥"
+    if theme == "futebol":
+        desc = f"{Nn} reagindo ao jogo{(' do ' + fut[1].title()) if fut and fut[1] else ''} ao vivo ⚽🔥"
     if chat_top and not rules.is_safe(channel):   # canais "safe": nada de comentário do chat na legenda
         desc += f'\n💬 O chat: "{chat_top}"'
     desc += f"\n🔴 Acompanhe {o} {Nn} na {plat}: {url}"
@@ -396,6 +499,10 @@ def make_meta(channel, platform, url, lines=(), manual=False, gain=0, avoid=(), 
     drop = {"#fyp", "#viral"} if rule else set()
     if theme == "react":   # react/outros: nada de hashtag de GTA
         base = [t for t in base if "gta" not in t.lower()] + ["#react", "#reacao"]
+    if theme == "futebol":  # futebol: hashtags de futebol (e do time, se ele falou)
+        team_tag = ["#" + re.sub(r"[^a-z]", "", _norm(fut[1]))] if fut and fut[1] else []
+        base = [t for t in base if "gta" not in t.lower() and t.lower() not in ("#fail", "#susto", "#epico")] + \
+            team_tag + ["#futebol", "#futebolbrasileiro", "#reacao", "#react", "#gol"]
     if rules.is_safe(channel):
         drop |= {"#fail", "#gtafail", "#wasted", "#susto", "#wtf"}
     for t in base:
@@ -403,11 +510,11 @@ def make_meta(channel, platform, url, lines=(), manual=False, gain=0, avoid=(), 
         if t not in tags and t.lower() not in drop:
             tags.append(t)
     quote = quote_near(speech, peak_rel)
-    first, rest = hooks_for(channel, cat, subject, gain, quote, theme)
+    first, rest = hooks_for(channel, cat, subject, gain, quote, theme, fut)
     hook = pick_hook(first, rest, set(avoid_hooks) | {title, raw_title})
     return {
         "cat": cat, "subject": subject, "title": title, "title_idx": titles.index(raw_title), "descr": desc,
-        "tags": " ".join(tags), "chat_top": chat_top, "yt_tags": youtube_tags(channel, platform, cat, subject, theme), "theme": theme,
+        "tags": " ".join(tags), "chat_top": chat_top, "yt_tags": youtube_tags(channel, platform, cat, subject, theme, fut[1] if fut else None), "theme": theme,
         "overlay": hook if settings.get("ov_on") else "",
         "transcript": " ".join(spoken)[:2000] or None,
     }
