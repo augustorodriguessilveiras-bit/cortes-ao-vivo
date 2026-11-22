@@ -59,12 +59,11 @@ def encoder():
         return _enc
 
 
-# Qualidade: o vídeo final (o que você posta) fica com qualidade alta; o "original" guardado pra editar
-# (com a sobra antes e depois) usa um pouco mais de compressão: ocupa bem menos e a diferença não aparece.
-MASTER_Q = {"NVIDIA": ["-cq", "24", "-preset", "p4"], "Intel": ["-global_quality", "24"],
-            "AMD": ["-qp_i", "23", "-qp_p", "25"], "processador": ["-crf", "23"]}
-FINAL_Q = {"NVIDIA": ["-cq", "21"], "Intel": ["-global_quality", "22"], "AMD": ["-qp_i", "21", "-qp_p", "23"],
-           "processador": ["-crf", "21"]}
+# Qualidade: o vídeo final (o que você posta) fica com a MESMA qualidade de sempre. O "original" guardado pra editar
+# usa um nível acima (medido: a qualidade do vertical final fica igual, 0,805 contra 0,803).
+MASTER_Q = {"NVIDIA": ["-cq", "20"], "Intel": ["-global_quality", "21"], "AMD": ["-qp_i", "20", "-qp_p", "22"],
+            "processador": ["-crf", "20"]}
+FINAL_Q = {}
 
 
 def _with(args, over):
@@ -83,7 +82,7 @@ def venc(kind="final"):
     return [*args, "-pix_fmt", "yuv420p"]
 
 
-AENC = ["-c:a", "aac", "-b:a", "160k"]
+AENC = ["-c:a", "aac", "-b:a", "192k"]
 
 
 # ------------------------------------------------------------ volume do áudio
