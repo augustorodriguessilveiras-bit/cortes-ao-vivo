@@ -112,13 +112,13 @@ def _levels_db(h):
     return [20 * math.log10(x + 1e-6) for x in render.second_levels(h)]
 
 
-def extra_fields(h, cs, ce, peak, lines, words, theme=None):
+def extra_fields(h, cs, ce, peak, lines, words, theme=None, natural=True):
     """Campos novos do corte: onde está o corte dentro do vídeo guardado, começo/fim esperto e as palavras."""
     _, _, hdur = render.probe(h)
     ce = min(ce, hdur) if hdur else ce
     out = {"core_start": round(cs, 2), "core_end": round(ce, 2), "peak_rel": round(peak, 2) if peak is not None else None,
            "style": settings.get("style"), "words": json.dumps(words) if words else None}
-    if theme == "futebol" and peak is not None:
+    if theme == "futebol" and peak is not None and natural:
         # futebol: começo e fim naturais (a jogada + a reação), cada corte com um tamanho
         try:
             sw = smart.fut_window(lines, _levels_db(h), peak, hdur or ce, settings.get("dur_futebol"))
@@ -127,6 +127,14 @@ def extra_fields(h, cs, ce, peak, lines, words, theme=None):
         if sw:
             out.update(smart_start=sw[0], smart_end=sw[1])
         return out
+    if peak is not None and natural:
+        # corte normal: começo e fim naturais em volta do momento (cada um com um tamanho, não 1 minuto cravado)
+        try:
+            nat = smart.clip_window(lines, _levels_db(h), peak, hdur or ce, float(settings.get("dur")))
+        except Exception:
+            nat = None
+        if nat:
+            out.update(core_start=nat[0], core_end=nat[1])
     sw = smart.smart_window(lines, peak, hdur or ce, max_len=max(20.0, ce - cs)) if lines else None
     if sw:
         out.update(smart_start=sw[0], smart_end=sw[1])

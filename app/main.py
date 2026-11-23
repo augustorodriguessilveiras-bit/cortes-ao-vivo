@@ -965,7 +965,7 @@ def _fmt_t(s):
     return f"{s // 3600}:{s % 3600 // 60:02d}:{s % 60:02d}"
 
 
-def _clip_from_file(h, cs, ce, peak, name, platform, ch_url, cam, theme, label):
+def _clip_from_file(h, cs, ce, peak, name, platform, ch_url, cam, theme, label, exact=False):
     """Cria o corte a partir de um vídeo já baixado (com sobra). cs/ce: onde está o corte dentro dele."""
     import json as _json
     spoken, speech, words = listen(h, cs, ce)
@@ -976,7 +976,7 @@ def _clip_from_file(h, cs, ce, peak, name, platform, ch_url, cam, theme, label):
     m = meta.make_meta(name, platform, ch_url, [], speech=speech or [],
                        peak_rel=(peak - cs) if peak is not None else None,
                        avoid=[r["title"] for r in prev], avoid_hooks=[r["overlay"] for r in prev], theme=theme)
-    ex = extra_fields(h, cs, ce, peak, None, words)          # sem "começo/fim esperto": o tempo foi você que escolheu
+    ex = extra_fields(h, cs, ce, peak, None, words, theme, natural=not exact)   # o tempo foi você que escolheu: não mexe
     clip_id = db.insert("clips", {
         "channel_id": 0, "channel_name": name, "peak_time": time.time(), "created_at": time.time(),
         "score": q["final"], "reasons": " · ".join([label] + q["reasons"]),
@@ -1046,7 +1046,7 @@ def _process_vodclip(url, a, b, theme_in, count=1):
         if count <= 1 or ce - cs < length * 1.6:
             # 1 corte: o trecho todo (o vídeo baixado passa a ser o do corte)
             hh, h = h, None
-            _clip_from_file(hh, cs, ce, None, name, platform, ch_url, cam, theme, label)
+            _clip_from_file(hh, cs, ce, None, name, platform, ch_url, cam, theme, label, exact=True)
             plog.info("✂ Seu trecho do VOD de %s (%s até %s) está pronto no painel.", name, _fmt_t(a), _fmt_t(b))
             return
         # até 3 cortes: os momentos mais fortes dentro do trecho, cada um do tamanho do "Duração do corte"

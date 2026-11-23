@@ -52,28 +52,26 @@ def smart_window(lines, peak, h_dur, max_len=60.0):
     return round(start, 2), round(end, 2)
 
 
-def fut_window(lines, levels, peak, h_dur, target=120.0):
+def natural_window(lines, levels, peak, h_dur, target, b_rng, a_rng, min_len, max_len):
     """
-    Corte de futebol com começo e fim naturais (não um tempo cravado):
-      - começo: início de uma frase (ou um momento mais calmo) de 45 a 90 s antes do lance, pra pegar a jogada
-      - fim: quando a reação acaba (pausa na fala ou o som volta ao normal), de 20 a 70 s depois do lance
+    Começo e fim naturais (não um tempo cravado):
+      - começo: início de uma frase (ou um momento mais calmo) entre b_rng segundos antes do momento forte
+      - fim: quando a reação acaba (pausa na fala ou o som volta ao normal), entre a_rng segundos depois
     lines: [(início, fim, frase)] · levels: volume (dB) de cada segundo do vídeo guardado · tudo no tempo do vídeo.
-    Retorna (início, fim) entre ~1min20 e 2min45, ou None.
     """
     if peak is None:
         return None
     lines = sorted(lines or [])
-    lo_b, hi_b = max(45.0, target * 0.38), min(90.0, target * 0.75)
-    want_b = target * 0.6
-    start = None
-    best = 1e9
+    lo_b, hi_b = b_rng
+    want_b = min(hi_b, max(lo_b, target * 0.6))
+    start, best = None, 1e9
     for i, (s, e, _) in enumerate(lines):           # início de frase depois de uma pausa
         if peak - hi_b <= s <= peak - lo_b:
             gap = s - lines[i - 1][1] if i else 9.0
             cost = abs((peak - s) - want_b) - (8 if gap >= 0.8 else 0)
             if cost < best:
                 start, best = s - 0.3, cost
-    if start is None and levels:                     # sem fala: o segundo mais calmo antes da jogada
+    if start is None and levels:                     # sem fala: o segundo mais calmo antes do momento
         a, b = int(max(0, peak - hi_b)), int(max(0, peak - lo_b))
         if b > a:
             seg = list(levels[a:b])
@@ -81,29 +79,43 @@ def fut_window(lines, levels, peak, h_dur, target=120.0):
     if start is None:
         start = peak - want_b
     end = None
+    lo_a, hi_a = a_rng
     for i, (s, e, _) in enumerate(lines):            # a reação acabou: pausa depois de falar
-        if e < peak + 20 or e > peak + 70:
+        if e < peak + lo_a or e > peak + hi_a:
             continue
         nxt = lines[i + 1][0] if i + 1 < len(lines) else h_dur
         if nxt - e >= 1.5:
             end = e + 0.8
             break
-    if end is None and levels:                       # sem fala: quando o som volta ao normal depois do lance
+    if end is None and levels:                       # sem fala: quando o som volta ao normal depois do momento
         import statistics
-        base = statistics.median(levels) if levels else 0
-        for t in range(int(peak + 20), int(min(len(levels) - 2, peak + 70))):
+        base = statistics.median(levels)
+        for t in range(int(peak + lo_a), int(min(len(levels) - 2, peak + hi_a))):
             if levels[t] <= base and levels[t + 1] <= base:
                 end = t + 1.5
                 break
     if end is None:
         end = peak + (target - want_b)
     start, end = max(0.0, start), min(h_dur, end)
-    if end - start < 80:                             # curto demais: completa dos dois lados
-        falta = 80 - (end - start)
+    if end - start < min_len:                        # curto demais: completa dos dois lados
+        falta = min_len - (end - start)
         start, end = max(0.0, start - falta / 2), min(h_dur, end + falta / 2)
-    if end - start > 165:
-        end = start + 165
+    if end - start > max_len:
+        end = start + max_len
     return round(start, 2), round(end, 2)
+
+
+def fut_window(lines, levels, peak, h_dur, target=120.0):
+    """Futebol: a jogada inteira antes do lance + a reação (de ~1min20 a 2min45)."""
+    return natural_window(lines, levels, peak, h_dur, target, (max(45.0, target * 0.38), min(90.0, target * 0.75)),
+                          (20, 70), 80, 165)
+
+
+def clip_window(lines, levels, peak, h_dur, target=60.0):
+    """Corte normal: começa numa frase antes do momento e termina quando a reação acaba (de ~40s a 1min45)."""
+    return natural_window(lines, levels, peak, h_dur, target, (max(15.0, target * 0.3), min(60.0, target * 0.8)),
+                          (max(10.0, target * 0.2), max(30.0, target * 0.85)), max(35.0, target * 0.65),
+                          min(110.0, max(target * 1.75, target + 20)))
 
 
 def group_words(words, gap=0.6):
