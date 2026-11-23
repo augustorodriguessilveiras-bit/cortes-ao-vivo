@@ -52,6 +52,11 @@ main{max-width:1280px;width:100%;margin:0 auto;padding:22px 22px 60px;min-width:
 .phone p{margin:0 0 6px}
 .urlbox{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:16px;overflow-wrap:anywhere}
 .howcard summary{cursor:pointer;font-weight:600}
+#diagCard{margin-bottom:14px}
+.diagtips{margin:0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:6px;font-size:14px}
+.diagtips li{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 12px}
+.diagnums{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:6px 14px;margin-top:8px}
+.diagnums b{color:var(--text)}
 .remote{border-top:1px solid var(--line);padding-top:10px;display:flex;flex-direction:column;gap:8px}
 .howcard .how{margin:10px 0 0}
 @media (max-width:860px){
@@ -254,6 +259,12 @@ details.meta[open] summary{margin-bottom:6px}
       <button class="tile" data-goto="cortes"><span class="tn" id="tNovos">0</span><span class="tl">cortes novos pra olhar</span></button>
       <button class="tile" data-goto="vods"><span class="tn" id="tVods">0</span><span class="tl">VODs na fila ou rodando</span></button>
       <button class="tile" data-goto="cortes" data-status="aprovado"><span class="tn" id="tAprov">0</span><span class="tl">aprovados esperando postar</span></button>
+    </div>
+    <div class="card" id="diagCard">
+      <div class="row between"><h3>🩺 Diagnóstico: está tudo certo?</h3>
+        <span class="actions"><button class="small" id="diagRun">↻ Verificar agora</button><button class="small" id="diagCopy">📋 Copiar pra mandar pro Claude</button></span></div>
+      <ul id="diagTips" class="diagtips"><li class="muted">Verificando…</li></ul>
+      <details class="muted" style="font-size:12.5px"><summary>Ver os números</summary><div id="diagNums" class="diagnums"></div></details>
     </div>
     <div class="card addcard">
       <h3>Adicionar canal ou VOD</h3>
@@ -1464,7 +1475,7 @@ function showPage(p, opts = {}){
   if (p === "espaco") loadStorage();
   if (p === "resultados") loadInsights();
   if (p === "compilado") loadCompile().catch(() => {});
-  if (p === "inicio") loadNet();
+  if (p === "inicio"){ loadNet(); loadDiag(); }
 }
 $("#nav").addEventListener("click", e => { const b = e.target.closest("button[data-page]"); if (b) showPage(b.dataset.page); });
 document.addEventListener("click", e => {
@@ -1481,6 +1492,34 @@ function updateBadges(){
   set("#nbCortes", C.pendente || 0); set("#nbLives", live); set("#nbVods", vq);
   $("#tLives").textContent = live; $("#tNovos").textContent = C.pendente || 0; $("#tVods").textContent = vq; $("#tAprov").textContent = C.aprovado || 0;
 }
+/* 🩺 diagnóstico */
+let DIAG = null;
+async function loadDiag(){
+  try {
+    const d = DIAG = await api("/api/diag");
+    $("#diagTips").innerHTML = d.tips.map(t => `<li>${esc(t)}</li>`).join("");
+    const fmtS = v => v == null ? "—" : v < 90 ? `${v}s` : `${Math.round(v / 60)} min`;
+    const rows = [
+      ["Montando os vídeos com", d.encoder === "processador" ? "processador (sem placa de vídeo)" : `placa de vídeo ${d.encoder}`],
+      ["Cortes na fila pra montar", d.clip_queue], ["Edições na fila", d.edit_queue], ["VODs rodando", d.vod_running],
+      ["Tempo médio pra um corte de live ficar pronto", fmtS(d.render_avg)],
+      ["Reconhecimento de fala", d.speech?.state === "pronto" ? (d.speech_speed ? `funcionando (${d.speech_speed}x mais rápido que o tempo real)` : "funcionando") : (d.speech?.state || "—")],
+      ["Nota mínima pra cortar", d.settings.min_score], ["Intervalo entre cortes", d.settings.gap + "s"],
+    ];
+    for (const L of d.lives) rows.push([`🔴 ${L.name} (${L.live_min ?? 0} min de live)`,
+      `vídeo chegando há ${fmtS(L.seg_ago)} · maior nota nos últimos min: ${L.max_recent ?? "—"} (média ${L.avg_recent ?? "—"}) · ${L.stats.momentos} momentos, ${L.stats.cortes} cortes, ${L.stats.descartados} descartados · fala: ${L.speech_on ? (L.speech_lag ?? 0) + "s de atraso" : "desligada"} · chat: ${L.chat || "não"}${L.chat_msgs != null ? " (" + L.chat_msgs + " msgs)" : ""} · último corte: ${L.last_clip_ago != null ? fmtS(L.last_clip_ago) + " atrás" : "nenhum ainda"}`]);
+    $("#diagNums").innerHTML = rows.map(([k, v]) => `<div>${esc(k)}: <b>${esc(String(v))}</b></div>`).join("");
+  } catch (e) { $("#diagTips").innerHTML = `<li>Não deu pra verificar: ${esc(e.message)}</li>`; }
+}
+$("#diagRun").onclick = () => { $("#diagTips").innerHTML = `<li class="muted">Verificando…</li>`; loadDiag(); };
+$("#diagCopy").onclick = () => {
+  if (!DIAG) return;
+  const txt = "DIAGNÓSTICO CORTES AO VIVO\n" + DIAG.tips.join("\n") + "\n\n" + [...document.querySelectorAll("#diagNums div")].map(x => x.textContent).join("\n")
+    + "\nAjustes: " + JSON.stringify(DIAG.settings) + " · processadores: " + DIAG.cpus;
+  copy(txt, "Diagnóstico copiado. Cole aqui na conversa com o Claude.");
+};
+setInterval(() => { if (curPage === "inicio" && !document.hidden) loadDiag(); }, 20000);
+
 /* ver no celular: endereço na rede de casa + QR code */
 let netLoaded = false;
 async function loadNet(){

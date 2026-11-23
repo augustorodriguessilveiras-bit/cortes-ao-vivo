@@ -11,6 +11,7 @@ _model = None
 _failed = False
 _error = ""
 _lock = threading.Lock()
+TIMES = []                       # (segundos de áudio, segundos que levou) dos últimos pedaços ouvidos
 _urgent = [0]                    # quantos pedidos das lives estão esperando (eles passam na frente dos VODs)
 _ulock = threading.Lock()
 MODEL = "base"  # leve (~150 MB). Baixa sozinho na primeira vez.
@@ -102,6 +103,7 @@ def transcribe_words(path, words=True, urgent=False):
             audio = load_audio(path)
             if len(audio) < 1600:                       # menos de 0,1 s: nada pra ouvir
                 return [], []
+            _t0 = _t.time()
             segs, _ = _model.transcribe(audio, language="pt", vad_filter=True, beam_size=1,
                                         condition_on_previous_text=False, word_timestamps=words)
             want_words = words
@@ -112,6 +114,8 @@ def transcribe_words(path, words=True, urgent=False):
                 for w in ((s.words or []) if want_words else []):
                     if w.word.strip():
                         words.append((round(float(w.start), 2), round(float(w.end), 2), w.word.strip()))
+            TIMES.append((len(audio) / 16000, _t.time() - _t0))
+            del TIMES[:-20]
             return lines, words
     except Exception as e:
         if urgent:

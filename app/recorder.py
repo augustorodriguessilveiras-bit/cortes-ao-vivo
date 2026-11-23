@@ -30,6 +30,7 @@ log = logging.getLogger("recorder")
 
 # Cortes montados um de cada vez (não disputa o PC com as gravações)
 CLIP_POOL = ThreadPoolExecutor(max_workers=1)
+RENDER_TIMES = deque(maxlen=20)  # quanto tempo cada corte de live levou pra ficar pronto (segundos)
 # Fila só das suas edições (editar, estilo, câmera, texto...): não espera os cortes automáticos
 EDIT_POOL = ThreadPoolExecutor(max_workers=1)
 _edit_q = []
@@ -251,6 +252,8 @@ class ChannelWorker(threading.Thread):
         self.speech_on = False
         self.speech_lag = 0.0
         self.stats = {"momentos": 0, "cortes": 0, "descartados": 0, "pela_fala": 0}
+        self.last_clip_at = None
+        self.last_seg_at = None
 
     def stop(self):
         self._stop.set()
@@ -286,6 +289,23 @@ class ChannelWorker(threading.Thread):
             "speech": ("ouvindo" if self.speech_lag < 150 else f"atrasado {int(self.speech_lag)}s") if self.speech_on else None,
             "stats": dict(self.stats),
         }
+
+    def diag(self):
+        """Pro 🩺 Diagnóstico: o que está acontecendo nessa live, com números."""
+        now = time.time()
+        h = list(self.history)
+        return {"name": self.name, "status": self.status, "theme": self.theme,
+                "seg_ago": round(now - self.last_seg_at) if self.last_seg_at else None,
+                "analysis_lag": round(now - self.analyzed_until) if self.analyzed_until else None,
+                "max_recent": max(h) if h else None, "avg_recent": round(sum(h) / len(h), 1) if h else None,
+                "secs_scored": len(h), "pending_jobs": len(self.jobs),
+                "speech_on": self.speech_on, "speech_lag": round(self.speech_lag) if self.speech_on else None,
+                "speech_hits": len(self.speech),
+                "chat": getattr(self.chat, "status", "conectado") if self.chat else None,
+                "chat_msgs": getattr(self.chat, "total", None) if self.chat else None,
+                "last_clip_ago": round(now - self.last_clip_at) if self.last_clip_at else None,
+                "live_min": round((now - self.live_since) / 60) if self.live_since else None,
+                "stats": dict(self.stats)}
 
     # ------------------------------------------------------------ loop principal
     def run(self):
@@ -442,6 +462,7 @@ class ChannelWorker(threading.Thread):
                 chunk = a[i * SR:(i + 1) * SR]
                 self.audio[int(start) + i] = float(20 * np.log10(np.sqrt(np.mean(chunk ** 2)) + 1e-6))
             self.segments.append((start, p, dur))
+            self.last_seg_at = time.time()
             self.analyzed_until = max(self.analyzed_until, start + dur)
 
     # ------------------------------------------------------------ ouvir a fala da live
@@ -629,6 +650,7 @@ class ChannelWorker(threading.Thread):
                 copied.append((s, dst))
             lines = self.chat.between(j["start"], j["end"] + 15) if self.chat else []
             log.info("✂ %s: momento forte (%s). Montando o corte…", self.name, " · ".join(j["reasons"]) or "pico")
+            j["queued_at"] = time.time()
             CLIP_POOL.submit(self._render, j, copied, lines)
 
     def _render(self, job, segs, lines):
@@ -692,6 +714,8 @@ class ChannelWorker(threading.Thread):
                 "signal_score": q["signal"], "content_score": q["content"], **m,
                 **extra_fields(h, cs, ce, job["peak"] - start, spoken, words, m.get("theme"))})
             self.stats["cortes"] += 1
+            self.last_clip_at = time.time()
+            RENDER_TIMES.append(time.time() - job.get("queued_at", time.time()))
             after_insert(clip_id)
             log.info("✂ corte pronto: %s (nota %.1f)", name, q["final"])
         except Exception:

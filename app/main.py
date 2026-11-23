@@ -2,6 +2,7 @@ import base64
 import json
 import logging
 import secrets
+import os
 import shutil
 import threading
 import time
@@ -236,6 +237,56 @@ def net_qr(request: Request, remoto: int = 0):
         return Response(buf.getvalue(), media_type="image/png", headers={"Cache-Control": "no-store"})
     except Exception:
         raise HTTPException(404, "QR code indisponível (o endereço está escrito do lado)")
+
+
+@app.get("/api/diag")
+def diagnostics():
+    """🩺 Diagnóstico: por que está saindo pouco corte ou devagar."""
+    from .recorder import RENDER_TIMES, EDIT_POOL
+    cfg = settings.get_all()
+    enc = render._enc[0] if render._enc else "verificando…"
+    lives = [w.diag() for w in workers.values() if w.status == "gravando"]
+    tt = list(transcribe.TIMES)
+    speed = round(sum(a for a, _ in tt) / max(0.1, sum(b for _, b in tt)), 1) if tt else None   # x vezes o tempo real
+    q = lambda pool: getattr(getattr(pool, "_work_queue", None), "qsize", lambda: 0)()
+    rt = list(RENDER_TIMES)
+    tips = []
+    if enc == "processador":
+        tips.append("🖥 Os vídeos estão sendo montados pelo PROCESSADOR (o programa não achou placa de vídeo compatível). "
+                    "Cada corte demora mais que num PC com placa de vídeo. Se esse PC tem placa NVIDIA/AMD/Intel, atualize o driver dela.")
+    if q(CLIP_POOL) >= 2:
+        tips.append(f"⏳ Tem {q(CLIP_POOL)} cortes na fila pra montar: o PC está demorando pra dar conta. "
+                    "Diminua 'VODs ao mesmo tempo' ou desligue 'Ouvir a fala do VOD inteiro' enquanto tiver live.")
+    if rt and sum(rt) / len(rt) > 240:
+        tips.append(f"🐢 Cada corte está levando uns {round(sum(rt) / len(rt) / 60)} min pra ficar pronto (normal: 1 a 3 min).")
+    if speed is not None and speed < 1.3:
+        tips.append(f"🗣 O reconhecimento de fala está lento nesse PC (ouve {speed}x mais rápido que o tempo real). "
+                    "Com várias lives, ele atrasa. Se pesar, desligue 'Ouvir a fala do VOD inteiro'.")
+    vod_running = sum(1 for v in db.query("SELECT status FROM vods") if not str(v["status"]).startswith(("pronto", "erro", "cancelado", "na fila")))
+    if vod_running and lives:
+        tips.append(f"🎬 Tem VOD sendo processado junto com a live: divide o PC. Os cortes da live podem atrasar.")
+    for L in lives:
+        n = L["name"]
+        if L["seg_ago"] is not None and L["seg_ago"] > 60:
+            tips.append(f"⚠ {n}: faz {L['seg_ago']}s que não chega vídeo novo da live. A gravação pode ter travado: remova e adicione o canal de novo.")
+        elif L["max_recent"] is not None and L["max_recent"] < cfg["min_score"] and not L["pending_jobs"]:
+            tips.append(f"😴 {n}: nada forte nos últimos {max(1, L['secs_scored'] // 60)} min (maior nota {L['max_recent']}, "
+                        f"a mínima pra cortar é {cfg['min_score']}). É o conteúdo da live, não problema do programa.")
+        if L["speech_on"] and L["speech_lag"] and L["speech_lag"] > 150:
+            tips.append(f"🗣 {n}: a fala está sendo ouvida com {L['speech_lag']}s de atraso (PC ocupado).")
+        if L["chat"] and L["chat"] not in ("conectado", "conectando"):
+            tips.append(f"💬 {n}: o chat não está sendo lido ({L['chat']}). Os cortes saem só pelo áudio e pela fala.")
+        if not L["speech_on"]:
+            tips.append(f"🗣 {n}: a fala não está sendo ouvida (reconhecimento de fala desligado ou com erro). Acha menos momentos.")
+    if not lives:
+        tips.append("⚫ Nenhuma live gravando agora.")
+    if not tips:
+        tips.append("✅ Tudo funcionando normal. Se está saindo pouco corte, é porque a live está tranquila.")
+    return {"encoder": enc, "clip_queue": q(CLIP_POOL), "edit_queue": q(EDIT_POOL), "manual_queue": q(MANUAL_POOL),
+            "render_avg": round(sum(rt) / len(rt)) if rt else None, "speech_speed": speed, "speech": transcribe.status(),
+            "vod_running": vod_running, "lives": lives, "tips": tips,
+            "settings": {k: cfg[k] for k in ("min_score", "discard_below", "gap", "dur", "vod_parallel", "live_speech", "vod_listen_all")},
+            "cpus": os.cpu_count()}
 
 
 @app.post("/api/settings")
