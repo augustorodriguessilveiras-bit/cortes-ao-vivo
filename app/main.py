@@ -192,19 +192,38 @@ def _lan_ip():
     return None
 
 
+def _tailscale_ip():
+    """Endereço do Tailscale (100.64.x.x a 100.127.x.x), se estiver instalado: dá pra abrir de fora de casa."""
+    import ipaddress
+    import socket
+    try:
+        ips = socket.gethostbyname_ex(socket.gethostname())[2]
+    except OSError:
+        ips = []
+    for ip in ips:
+        try:
+            if ipaddress.ip_address(ip) in ipaddress.ip_network("100.64.0.0/10"):
+                return ip
+        except ValueError:
+            pass
+    return None
+
+
 @app.get("/api/net")
 def net_info(request: Request):
     ip = _lan_ip()
     port = request.url.port or 8000
     url = f"http://{ip}:{port}" if ip else None
+    ts = _tailscale_ip()
     host = (request.client.host if request.client else "") or ""
     return {"url": url, "qr": "/api/net/qr.png" if url else None,
+            "remote": f"http://{ts}:{port}" if ts else None, "remote_qr": "/api/net/qr.png?remoto=1" if ts else None,
             "here_phone": host not in ("127.0.0.1", "::1", "localhost") and host != ip}
 
 
 @app.get("/api/net/qr.png")
-def net_qr(request: Request):
-    ip = _lan_ip()
+def net_qr(request: Request, remoto: int = 0):
+    ip = _tailscale_ip() if remoto else _lan_ip()
     if not ip:
         raise HTTPException(404, "Sem endereço na rede")
     url = f"http://{ip}:{request.url.port or 8000}/#cortes"

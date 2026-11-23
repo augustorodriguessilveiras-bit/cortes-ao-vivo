@@ -146,6 +146,10 @@ tem o endereço (ex: `http://192.168.0.15:8000`) e um QR code. Pelo celular dá 
 (⬇ Vertical) e copiar título/hashtags pra postar. Se não abrir: no Windows, permita o Python em "Redes privadas"
 (Firewall do Windows → Permitir um aplicativo) e deixe a rede de casa como "Rede privada".
 
+**Fora de casa (4G, outro Wi-Fi):** instale o app grátis **Tailscale** no computador e no celular, com a mesma conta,
+e deixe ligado. O endereço de fora de casa (`http://100.x.x.x:8000`) e o QR code aparecem na aba Início.
+Só os seus aparelhos conseguem abrir.
+
 ## Recursos dos cortes
 
 - **Sobra antes e depois:** cada corte guarda 30s a mais antes e depois (muda em Ajustes). No ✂ Editar corte, puxe

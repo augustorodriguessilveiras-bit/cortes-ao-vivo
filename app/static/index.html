@@ -52,6 +52,7 @@ main{max-width:1280px;width:100%;margin:0 auto;padding:22px 22px 60px;min-width:
 .phone p{margin:0 0 6px}
 .urlbox{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:16px;overflow-wrap:anywhere}
 .howcard summary{cursor:pointer;font-weight:600}
+.remote{border-top:1px solid var(--line);padding-top:10px;display:flex;flex-direction:column;gap:8px}
 .howcard .how{margin:10px 0 0}
 @media (max-width:860px){
   .shell{display:block}
@@ -275,8 +276,16 @@ details.meta[open] summary{margin-bottom:6px}
           <p class="urlbox"><b id="lanUrl">…</b> <button class="small" id="copyLan">Copiar</button></p>
           <p class="muted" style="font-size:12px">Dá pra ver os cortes, assistir, baixar o vídeo (⬇ Vertical) e copiar título e hashtags pra postar direto do celular. O computador precisa estar ligado com a janela preta aberta.</p>
           <details class="muted" style="font-size:12px"><summary>Não abre no celular?</summary>
-            <p>1) Confira se o celular está no mesmo Wi-Fi (não no 4G/5G).<br>2) No computador, quando o Windows perguntar se o Python pode usar a rede, marque <b>Redes privadas</b> e clique em Permitir.<br>3) Se você já clicou em Cancelar antes: abra "Firewall do Windows" → "Permitir um aplicativo" → marque o <b>Python</b> em Privada.<br>4) A rede de casa precisa estar como <b>Rede privada</b> nas configurações de Wi-Fi do Windows.</p></details>
+            <p>1) Confira se o celular está no mesmo Wi-Fi (não no 4G/5G; pra fora de casa, veja abaixo).<br>2) No computador, quando o Windows perguntar se o Python pode usar a rede, marque <b>Redes privadas</b> e clique em Permitir.<br>3) Se você já clicou em Cancelar antes: abra "Firewall do Windows" → "Permitir um aplicativo" → marque o <b>Python</b> em Privada.<br>4) A rede de casa precisa estar como <b>Rede privada</b> nas configurações de Wi-Fi do Windows.</p></details>
           </div></div>
+        <div class="remote" id="remoteBox">
+          <h3>🌍 Fora de casa</h3>
+          <div id="remoteOn" hidden class="phone"><img id="remoteQr" alt="QR code pra abrir o painel de fora de casa">
+            <div><p class="muted">Com o <b style="color:var(--text)">Tailscale</b> ligado no celular, abra de qualquer lugar (4G ou outro Wi-Fi):</p>
+            <p class="urlbox"><b id="remoteUrl"></b> <button class="small" id="copyRemote">Copiar</button></p></div></div>
+          <div id="remoteOff" class="muted" style="font-size:12.5px">Quer abrir de fora de casa (4G, outro Wi-Fi)? Instale o app grátis <b style="color:var(--text)">Tailscale</b> no computador
+            (tailscale.com/download) e no celular, entre com a <b style="color:var(--text)">mesma conta</b> nos dois e deixe ligado. Depois feche e abra o programa: o endereço de fora de casa aparece aqui. Só os seus aparelhos conseguem abrir.</div>
+        </div>
       </div>
     </div>
     <details class="card howcard"><summary>Como funciona (passo a passo)</summary>
@@ -1481,9 +1490,11 @@ async function loadNet(){
     $("#lanUrl").textContent = n.url || "(não achei o endereço do computador na rede)";
     if (n.qr){ $("#qrImg").src = n.qr; $("#qrImg").hidden = false; }
     if (n.here_phone) $("#phoneCard").querySelector("h3").textContent = "📱 Você está vendo pelo celular";
+    if (n.remote){ $("#remoteUrl").textContent = n.remote; $("#remoteQr").src = n.remote_qr; $("#remoteOn").hidden = false; $("#remoteOff").hidden = true; }
   } catch {}
 }
 $("#copyLan").onclick = () => copy($("#lanUrl").textContent, "Endereço copiado");
+$("#copyRemote").onclick = () => copy($("#remoteUrl").textContent, "Endereço de fora de casa copiado");
 
 /* ------------------------------------------------------------ início */
 for (const f of ["CortesAnton", "CortesArchivo", "CortesBangers", "CortesLuckiest", "CortesBebas"]) document.fonts?.load(`40px "${f}"`).catch(() => {});
