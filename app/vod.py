@@ -223,6 +223,56 @@ def _hms(t):
     return f"{t // 3600}:{t % 3600 // 60:02d}:{t % 60:02d}"
 
 
+def _audio_scores(levels):
+    """Nota de cada segundo pelo som (0 a 10+), comparando com os 10 minutos ao redor."""
+    n = len(levels)
+    block = 30
+    med = np.zeros(n)
+    mad = np.zeros(n)
+    for b0 in range(0, n, block):
+        win = levels[max(0, b0 - 300): min(n, b0 + 300)]
+        m = np.median(win)
+        med[b0:b0 + block] = m
+        mad[b0:b0 + block] = np.median(np.abs(win - m)) * 1.4826 + 1.0
+    loud = np.array([levels[t:t + 3].max() for t in range(n)])
+    return np.maximum(0, ((loud - med) / mad - 1) * 2.2), loud, med
+
+
+def fill_peaks(levels, lines, have, target, gap):
+    """
+    Trecho escolhido por você: completa até ter cortes suficientes com os MELHORES momentos relativos do trecho,
+    mesmo que nenhum "estoure" (react de jogo tem som alto o tempo todo). Junta: o som mais alto daquele pedaço,
+    onde ele está falando/comentando e os lances e reações que ele fala.
+    """
+    n = len(levels)
+    if n < 30 or len(have) >= target:
+        return []
+    score, loud, med = _audio_scores(levels)
+    total = np.array(score, dtype=float)
+    talk = np.zeros(n)
+    for s, e, text in (lines or []):
+        a, b = max(0, int(s)), min(n, int(e) + 1)
+        if b <= a:
+            continue
+        t = quality._norm(text)
+        bonus = 0.6 + min(4.0, quality.speech_moment(text) / 2) + 1.5 * min(3, len(quality.foot_hits(t)))
+        talk[a:b] += bonus
+    if talk.any():
+        k = 9                                         # soma a fala dos segundos em volta (comentário + reação)
+        talk = np.convolve(talk, np.ones(k) / k, mode="same") * 3
+    total = total + talk
+    picked = []
+    for t in np.argsort(-total):
+        t = int(t)
+        if len(have) + len(picked) >= target:
+            break
+        if t < 10 or t > n - 10:
+            continue
+        if all(abs(t - p[0]) > gap for p in list(have) + picked):
+            picked.append((t, float(min(10.0, 3 + total[t])), float(max(0.0, loud[t] - med[t]))))
+    return picked
+
+
 def find_peaks(levels, min_score, cooldown, max_clips):
     """Mesma nota da live (0 a 10), usando a base dos 10 minutos ao redor de cada trecho."""
     n = len(levels)
@@ -311,6 +361,15 @@ def _process(vod_id):
                     added += 1
             peaks = known
             log.info("🎬 VOD de %s: ouvi tudo. %d momentos a mais achados pela fala.", name, added)
+    if ranged:
+        # trecho escolhido por você: garante cortes suficientes pelo tamanho do trecho
+        # (futebol ~1 a cada 5 min, o resto ~1 a cada 2,5 min); completa com os melhores momentos relativos
+        win = cfg["before"] + cfg["after"]
+        target = max(1, round(len(levels) / (win * 2.5)))
+        extra = fill_peaks(levels, all_lines, peaks, target, cfg["cooldown"])
+        if extra:
+            log.info("🎬 Trecho de %s: %d momentos fortes; completei com mais %d dos melhores do trecho.", name, len(peaks), len(extra))
+            peaks = list(peaks) + extra
     if not peaks:
         _set(vod_id, status="pronto: nenhum momento forte achado", progress=1)
         forget_cache(vod_id)
