@@ -19,7 +19,55 @@ header{display:flex;align-items:center;justify-content:space-between;gap:12px;fl
   background:linear-gradient(90deg,rgba(255,79,154,.13),rgba(255,179,71,.06) 60%,transparent)}
 h1{margin:0;font-size:20px}
 h1 span{background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
-main{max-width:1280px;margin:0 auto;padding:20px 16px 60px}
+/* Layout: menu à esquerda (computador) / barra de abas embaixo (celular); cada seção é uma "página" */
+.shell{display:grid;grid-template-columns:224px minmax(0,1fr);min-height:calc(100vh - 60px)}
+nav.side{position:sticky;top:0;align-self:start;height:calc(100vh - 0px);display:flex;flex-direction:column;gap:4px;padding:16px 12px;
+  border-right:1px solid var(--line);background:linear-gradient(180deg,var(--panel),var(--bg));overflow-y:auto}
+nav.side button{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:none;border:1px solid transparent;
+  border-radius:10px;padding:10px 12px;color:var(--muted);font-size:14.5px}
+nav.side button:hover{background:var(--panel2);color:var(--text);border-color:var(--line)}
+nav.side button.on{background:linear-gradient(90deg,rgba(255,79,154,.18),rgba(255,179,71,.08));color:var(--text);border-color:rgba(255,79,154,.45)}
+nav.side .ic{width:22px;text-align:center;font-size:17px;flex:none}
+nav.side .lb{flex:1;min-width:0}
+nav.side .nb{margin-left:auto;min-width:22px;padding:1px 7px;border-radius:99px;background:var(--accent);color:#fff;font-size:12px;font-weight:700;text-align:center}
+nav.side .nb.live{background:var(--live)}
+main{max-width:1280px;width:100%;margin:0 auto;padding:22px 22px 60px;min-width:0}
+.page{display:none}
+.page.on{display:block;animation:pgin .18s ease-out}
+@keyframes pgin{from{opacity:.4;transform:translateY(4px)}to{opacity:1;transform:none}}
+.pagehead{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:2px 0 16px}
+.pagehead .ptitle{font-size:24px;text-transform:none;letter-spacing:0;color:var(--text);margin:0;font-weight:750}
+.pagehead .psub{margin:4px 0 0;color:var(--muted);font-size:13.5px;flex-basis:100%}
+.pagehead > button{order:2}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.card h3{margin:0;font-size:15px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px}
+.tile{display:flex;flex-direction:column;align-items:flex-start;gap:2px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;text-align:left;white-space:normal}
+.tile .tn{font-size:28px;font-weight:800;font-variant-numeric:tabular-nums;background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
+.tile .tl{color:var(--muted);font-size:13px}
+.addcard{margin-bottom:14px}
+.twocol{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:14px;margin-bottom:14px}
+.phone{display:flex;gap:14px;align-items:flex-start}
+.phone img{width:150px;height:150px;border-radius:10px;background:#fff;padding:6px;flex:none;image-rendering:pixelated}
+.phone p{margin:0 0 6px}
+.urlbox{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:16px;overflow-wrap:anywhere}
+.howcard summary{cursor:pointer;font-weight:600}
+.howcard .how{margin:10px 0 0}
+@media (max-width:860px){
+  .shell{display:block}
+  nav.side{position:fixed;top:auto;bottom:0;left:0;right:0;height:auto;flex-direction:row;gap:2px;padding:6px 6px calc(6px + env(safe-area-inset-bottom,0px));
+    border-right:0;border-top:1px solid var(--line);background:var(--panel);z-index:60;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+  nav.side::-webkit-scrollbar{display:none}
+  nav.side button{flex-direction:column;gap:2px;width:auto;min-width:68px;padding:6px 8px;font-size:11px;text-align:center;flex:none;position:relative}
+  nav.side .ic{font-size:20px;width:auto}
+  nav.side .lb{white-space:nowrap}
+  nav.side .nb{position:absolute;top:2px;right:6px;margin:0;font-size:10.5px;min-width:18px;padding:0 5px}
+  main{padding:16px 12px 96px}
+  .twocol{grid-template-columns:minmax(0,1fr)}
+  .pagehead .ptitle{font-size:21px}
+  header{padding:12px 14px}
+}
+@media (max-width:480px){ .phone{flex-direction:column} .phone img{width:140px;height:140px} }
 h2{font-size:13px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);margin:28px 0 12px}
 .muted{color:var(--muted);font-size:13px}
 .add{display:flex;gap:8px;flex-wrap:wrap}
@@ -184,30 +232,87 @@ details.meta[open] summary{margin-bottom:6px}
   <h1>✂ <span>Cortes ao Vivo</span></h1>
   <div class="muted" id="sys"></div>
 </header>
+<div class="shell">
+<nav class="side" id="nav" aria-label="Seções do painel">
+  <button data-page="inicio"><span class="ic">🏠</span><span class="lb">Início</span></button>
+  <button data-page="cortes"><span class="ic">✂️</span><span class="lb">Cortes</span><span class="nb" id="nbCortes" hidden></span></button>
+  <button data-page="lives"><span class="ic">🔴</span><span class="lb">Lives</span><span class="nb live" id="nbLives" hidden></span></button>
+  <button data-page="vods"><span class="ic">🎬</span><span class="lb">VODs</span><span class="nb" id="nbVods" hidden></span></button>
+  <button data-page="enviar"><span class="ic">📤</span><span class="lb">Enviar / Trecho</span></button>
+  <button data-page="compilado"><span class="ic">🎞️</span><span class="lb">Compilado</span></button>
+  <button data-page="resultados"><span class="ic">📈</span><span class="lb">Resultados</span></button>
+  <button data-page="espaco"><span class="ic">🧹</span><span class="lb">Espaço</span></button>
+  <button data-page="ajustes"><span class="ic">⚙️</span><span class="lb">Ajustes</span></button>
+</nav>
 <main>
   <div id="verBanner" class="verbanner" hidden></div>
+  <section class="page" data-page="inicio">
+    <div class="pagehead"><h2 class="ptitle">Início</h2><p class="psub">Resumo do que está rolando e onde adicionar canais e VODs.</p></div>
+    <div class="tiles">
+      <button class="tile" data-goto="lives"><span class="tn" id="tLives">0</span><span class="tl">lives gravando agora</span></button>
+      <button class="tile" data-goto="cortes"><span class="tn" id="tNovos">0</span><span class="tl">cortes novos pra olhar</span></button>
+      <button class="tile" data-goto="vods"><span class="tn" id="tVods">0</span><span class="tl">VODs na fila ou rodando</span></button>
+      <button class="tile" data-goto="cortes" data-status="aprovado"><span class="tn" id="tAprov">0</span><span class="tl">aprovados esperando postar</span></button>
+    </div>
+    <div class="card addcard">
+      <h3>Adicionar canal ou VOD</h3>
+  <div class="add">
+    <input type="text" id="url" placeholder="Cole o link: canal (twitch.tv/nome, kick.com/nome) ou VOD (kick.com/nome/videos/...)" autocomplete="off">
+    <button class="primary" id="addBtn">+ Adicionar</button>
+  </div>
+  <p class="muted">Link de <b style="color:var(--text)">canal</b>: grava sozinho sempre que entrar ao vivo. Link de <b style="color:var(--text)">vídeo/VOD</b> (live que já passou): procura os melhores momentos no vídeo <b style="color:var(--text)">inteiro</b> e corta vários. Quer só uma parte que você já sabe o tempo? Use a aba <b style="color:var(--text)">📤 Enviar / Trecho</b>. Twitch, Kick e YouTube.</p>
+
+    </div>
+    <div class="twocol">
+      <div class="card"><h3>O que está acontecendo agora</h3>
+
+  <div class="activity" id="activity"></div>
+
+      </div>
+      <div class="card" id="phoneCard"><h3>📱 Ver no celular</h3>
+        <div class="phone"><img id="qrImg" alt="QR code pra abrir o painel no celular" hidden>
+          <div><p class="muted">Com o celular no <b style="color:var(--text)">mesmo Wi-Fi</b> do computador, aponte a câmera pro QR code ou digite no navegador do celular:</p>
+          <p class="urlbox"><b id="lanUrl">…</b> <button class="small" id="copyLan">Copiar</button></p>
+          <p class="muted" style="font-size:12px">Dá pra ver os cortes, assistir, baixar o vídeo (⬇ Vertical) e copiar título e hashtags pra postar direto do celular. O computador precisa estar ligado com a janela preta aberta.</p>
+          <details class="muted" style="font-size:12px"><summary>Não abre no celular?</summary>
+            <p>1) Confira se o celular está no mesmo Wi-Fi (não no 4G/5G).<br>2) No computador, quando o Windows perguntar se o Python pode usar a rede, marque <b>Redes privadas</b> e clique em Permitir.<br>3) Se você já clicou em Cancelar antes: abra "Firewall do Windows" → "Permitir um aplicativo" → marque o <b>Python</b> em Privada.<br>4) A rede de casa precisa estar como <b>Rede privada</b> nas configurações de Wi-Fi do Windows.</p></details>
+          </div></div>
+      </div>
+    </div>
+    <details class="card howcard"><summary>Como funciona (passo a passo)</summary>
   <div class="how">
     <div><b>1. Cole o link</b>Do canal (pra gravar as lives) ou de um vídeo que já passou (VOD).</div>
     <div><b>2. O programa grava sozinho</b>Baixa o vídeo direto da Kick/Twitch, na qualidade original. Não precisa deixar a live aberta.</div>
     <div><b>3. Marque a webcam uma vez</b>Com o canal gravando, clique em "📷 Marcar câmera" e arraste em cima da cam. Se o streamer ficar em tela cheia na câmera, o corte sai na tela toda sozinho.</div>
     <div><b>4. Os cortes aparecem embaixo</b>Quando o áudio ou o chat explodem, o corte sai pronto: cam em cima, título e hashtags.</div>
   </div>
-  <div class="add">
-    <input type="text" id="url" placeholder="Cole o link: canal (twitch.tv/nome, kick.com/nome) ou VOD (kick.com/nome/videos/...)" autocomplete="off">
-    <button class="primary" id="addBtn">+ Adicionar</button>
+    </details>
+  </section>
+  <section class="page" data-page="cortes">
+    <div class="pagehead"><h2 class="ptitle">Cortes</h2><p class="psub">Os cortes prontos: assista, ajuste, copie o título e as hashtags e poste.</p></div>
+  <div class="toolbar">
+    <div class="tabs" id="tabs">
+      <button data-s="pendente" class="on">Novos</button>
+      <button data-s="aprovado">Aprovados</button>
+      <button data-s="postado">Postados</button>
+      <button data-s="">Todos</button>
+    </div>
+    <select id="chanFilter" aria-label="Filtrar por canal"><option value="">Todos os canais</option></select>
   </div>
-  <p class="muted">Link de <b style="color:var(--text)">canal</b>: grava sozinho sempre que entrar ao vivo. Link de <b style="color:var(--text)">vídeo/VOD</b> (live que já passou): procura os melhores momentos no vídeo <b style="color:var(--text)">inteiro</b> e corta vários. Quer só uma parte que você já sabe o tempo? Use <b style="color:var(--text)">✂ Cortar um trecho de VOD</b> lá embaixo. Twitch, Kick e YouTube.</p>
-
-  <h2>O que está acontecendo agora</h2>
-  <div class="activity" id="activity"></div>
-
-  <h2>Lives</h2>
+  <div class="clips" id="clips"></div>
+  </section>
+  <section class="page" data-page="lives">
+    <div class="pagehead"><h2 class="ptitle">Lives</h2><p class="psub">Canais que o programa grava sozinho quando entram ao vivo.</p><button class="small" data-goto="inicio" data-focus="url">➕ Adicionar canal ou VOD</button></div>
   <div class="grid" id="lives"></div>
 
-  <h2>VODs</h2>
+  </section>
+  <section class="page" data-page="vods">
+    <div class="pagehead"><h2 class="ptitle">VODs</h2><p class="psub">Lives que já passaram, sendo analisadas pra achar os melhores momentos.</p><button class="small" data-goto="inicio" data-focus="url">➕ Adicionar canal ou VOD</button></div>
   <div class="grid" id="vods"></div>
 
-  <h2>📤 Enviar um corte seu / ✂ Cortar um trecho de VOD</h2>
+  </section>
+  <section class="page" data-page="enviar">
+    <div class="pagehead"><h2 class="ptitle">Enviar / Trecho</h2><p class="psub">Mande um corte seu ou corte direto um pedaço de um VOD pelo tempo.</p></div>
   <div class="settings" id="upBox" style="flex-direction:column;align-items:stretch;gap:10px">
     <div class="muted">Cortou um trecho você mesmo? Envie aqui e o programa deixa no formato do TikTok/Reels/Shorts: câmera em cima (acha a webcam sozinho), título no vídeo, descrição, hashtags, tags e as regras do campeonato. Ele aparece junto com os outros cortes e dá pra editar igual.</div>
     <div class="add">
@@ -231,7 +336,50 @@ details.meta[open] summary{margin-bottom:6px}
     <div id="tcInfo" class="muted"></div>
   </div>
 
-  <h2>Ajustes</h2>
+  </section>
+  <section class="page" data-page="compilado">
+    <div class="pagehead"><h2 class="ptitle">Compilado pro YouTube</h2></div>
+  <div class="settings" style="flex-direction:column;align-items:stretch;gap:10px">
+    <div class="muted">Junta vários cortes num vídeo deitado (16:9) pro YouTube: o título de cada momento aparece no começo dele, com a marca d'água do campeonato e os capítulos prontos pra descrição. Só aparecem cortes <b style="color:var(--text)">aprovados ou postados que ainda têm o vídeo no PC</b>.</div>
+    <div class="add">
+      <select id="cmpChan"><option value="">Todos os streamers</option></select>
+      <select id="cmpDays"><option value="7">Últimos 7 dias</option><option value="14">Últimos 14 dias</option><option value="30">Últimos 30 dias</option></select>
+      <button class="small" id="cmpLoad">↻ Mostrar cortes</button>
+    </div>
+    <div id="cmpList" class="cmplist"></div>
+    <div class="add">
+      <input type="text" id="cmpTitle" placeholder="Título do compilado (deixe vazio que o programa cria)" autocomplete="off">
+      <button class="primary" id="cmpGo">🎬 Montar compilado</button>
+    </div>
+    <div id="cmpItems" style="display:flex;flex-direction:column;gap:8px"></div>
+  </div>
+
+  </section>
+  <section class="page" data-page="resultados">
+    <div class="pagehead"><h2 class="ptitle">Resultados</h2><p class="psub">O que dá mais visualização nos seus cortes postados.</p></div>
+  <div class="settings" id="insBox" style="flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:10px"><div class="muted">Carregando…</div></div>
+
+  </section>
+  <section class="page" data-page="espaco">
+    <div class="pagehead"><h2 class="ptitle">Espaço no computador</h2></div>
+  <div class="settings" id="storage" style="flex-direction:column;align-items:stretch;gap:10px">
+    <div id="stInfo" class="muted">Calculando…</div>
+    <div class="actions">
+      <button class="small" data-clean="postados">Apagar vídeos dos já postados</button>
+      <button class="small" data-clean="novos_antigos" style="white-space:normal;text-align:left">Apagar cortes novos não aprovados com mais de 3 dias</button>
+      <button class="small" data-clean="lixo">Apagar arquivos esquecidos (sobras e temporários)</button>
+      <button class="small" id="stRefresh">↻ Atualizar</button>
+    </div>
+    <div class="settings" style="padding:0;border:0;background:none">
+      <label>Apagar sozinho cortes novos que eu não olhei depois de <input type="range" id="auto_clean_days" min="0" max="30" step="1"><output></output></label>
+      <label>Espaço máximo dos cortes <input type="range" id="max_gb" min="0" max="300" step="5"><output></output></label>
+    </div>
+    <div class="muted" style="font-size:12px">A limpeza automática roda sozinha a cada 30 minutos. <b style="color:var(--text)">Cortes aprovados nunca são apagados sozinhos.</b> Passando do espaço máximo, apaga primeiro os cortes novos mais antigos (e os vídeos dos já postados).</div>
+  </div>
+
+  </section>
+  <section class="page" data-page="ajustes">
+    <div class="pagehead"><h2 class="ptitle">Ajustes</h2><p class="psub">Valem pros próximos cortes. Salvam sozinhos.</p></div>
   <div class="settings">
     <label>Nota mínima p/ cortar <input type="range" id="min_score" min="3" max="9.5" step="0.5"><output></output></label>
     <label>Descartar sozinho cortes com nota abaixo de <input type="range" id="discard_below" min="0" max="8" step="0.5"><output></output></label>
@@ -257,53 +405,9 @@ details.meta[open] summary{margin-bottom:6px}
   </div>
   <p class="muted">Muito corte ruim? Aumente a nota mínima. Poucos cortes? Diminua.</p>
 
-  <h2>🧹 Espaço no computador</h2>
-  <div class="settings" id="storage" style="flex-direction:column;align-items:stretch;gap:10px">
-    <div id="stInfo" class="muted">Calculando…</div>
-    <div class="actions">
-      <button class="small" data-clean="postados">Apagar vídeos dos já postados</button>
-      <button class="small" data-clean="novos_antigos" style="white-space:normal;text-align:left">Apagar cortes novos não aprovados com mais de 3 dias</button>
-      <button class="small" data-clean="lixo">Apagar arquivos esquecidos (sobras e temporários)</button>
-      <button class="small" id="stRefresh">↻ Atualizar</button>
-    </div>
-    <div class="settings" style="padding:0;border:0;background:none">
-      <label>Apagar sozinho cortes novos que eu não olhei depois de <input type="range" id="auto_clean_days" min="0" max="30" step="1"><output></output></label>
-      <label>Espaço máximo dos cortes <input type="range" id="max_gb" min="0" max="300" step="5"><output></output></label>
-    </div>
-    <div class="muted" style="font-size:12px">A limpeza automática roda sozinha a cada 30 minutos. <b style="color:var(--text)">Cortes aprovados nunca são apagados sozinhos.</b> Passando do espaço máximo, apaga primeiro os cortes novos mais antigos (e os vídeos dos já postados).</div>
-  </div>
-
-  <h2>📈 O que dá mais view</h2>
-  <div class="settings" id="insBox" style="flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:10px"><div class="muted">Carregando…</div></div>
-
-  <h2>🎬 Compilado pro YouTube</h2>
-  <div class="settings" style="flex-direction:column;align-items:stretch;gap:10px">
-    <div class="muted">Junta vários cortes num vídeo deitado (16:9) pro YouTube: o título de cada momento aparece no começo dele, com a marca d'água do campeonato e os capítulos prontos pra descrição. Só aparecem cortes <b style="color:var(--text)">aprovados ou postados que ainda têm o vídeo no PC</b>.</div>
-    <div class="add">
-      <select id="cmpChan"><option value="">Todos os streamers</option></select>
-      <select id="cmpDays"><option value="7">Últimos 7 dias</option><option value="14">Últimos 14 dias</option><option value="30">Últimos 30 dias</option></select>
-      <button class="small" id="cmpLoad">↻ Mostrar cortes</button>
-    </div>
-    <div id="cmpList" class="cmplist"></div>
-    <div class="add">
-      <input type="text" id="cmpTitle" placeholder="Título do compilado (deixe vazio que o programa cria)" autocomplete="off">
-      <button class="primary" id="cmpGo">🎬 Montar compilado</button>
-    </div>
-    <div id="cmpItems" style="display:flex;flex-direction:column;gap:8px"></div>
-  </div>
-
-  <h2>Cortes</h2>
-  <div class="toolbar">
-    <div class="tabs" id="tabs">
-      <button data-s="pendente" class="on">Novos</button>
-      <button data-s="aprovado">Aprovados</button>
-      <button data-s="postado">Postados</button>
-      <button data-s="">Todos</button>
-    </div>
-    <select id="chanFilter" aria-label="Filtrar por canal"><option value="">Todos os canais</option></select>
-  </div>
-  <div class="clips" id="clips"></div>
+  </section>
 </main>
+</div>
 
 <div class="modal" id="camModal" hidden>
   <div class="box" role="dialog" aria-labelledby="camTitle">
@@ -524,7 +628,7 @@ $("#tcBtn").addEventListener("click", async () => {
     await post("/api/vodclip", { url, start: $("#tcFrom").value, end: $("#tcTo").value, theme: $("#tcTheme").value, count: +$("#tcCount").value });
     $("#tcInfo").textContent = $("#tcCount").value === "1"
       ? "✅ Baixando só esse pedaço do VOD e montando o corte… acompanhe em \"O que está acontecendo agora\". Em alguns minutos ele aparece em Cortes → Novos."
-      : "✅ Procurando os momentos bons do trecho… o andamento aparece lá em cima, em VODs. Os cortes vão aparecendo em Cortes → Novos.";
+      : "✅ Procurando os momentos bons do trecho… o andamento aparece na aba VODs. Os cortes vão aparecendo em Cortes → Novos.";
     loadState();
     $("#tcFrom").value = ""; $("#tcTo").value = "";
     toast("Trecho enviado! Já já ele aparece na lista.");
@@ -575,7 +679,7 @@ function spark(h, min){
   return `<svg class="spark" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><line x1="0" x2="100" y1="${y}" y2="${y}" stroke="#ff4f9a" stroke-width="1" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/><polyline points="${pts}" fill="none" stroke="#ffb347" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>`;
 }
 function renderLives(){
-  fillUpNames();
+  fillUpNames(); updateBadges();
   const el = $("#lives"), cs = ST.channels;
   el.innerHTML = !cs.length ? `<div class="empty">Nenhum canal ainda. Cole o link de um canal acima.</div>` : cs.map(c => {
     const live = c.status === "gravando";
@@ -780,7 +884,7 @@ function renderClips(force){
 function renderActivity(){
   const a = ST.activity || [];
   $("#activity").innerHTML = a.length ? a.map(x => `<div class="${x.level === "WARNING" ? "w" : ""}"><span class="t">${new Date(x.t * 1000).toLocaleTimeString("pt-BR")}</span>${esc(x.msg)}</div>`).join("")
-    : `<div class="muted">Nada ainda. Cole o link de um canal ou de um VOD lá em cima.</div>`;
+    : `<div class="muted">Nada ainda. Cole o link de um canal ou de um VOD em "Adicionar canal ou VOD".</div>`;
 }
 function showOldServer(){
   const vb = $("#verBanner"); if (!vb) return;
@@ -1052,7 +1156,7 @@ async function addLink(){
   if (t0 != null && t0 > 0){
     $("#tcUrl").value = url.replace(/([?&#])t=[^&#]*&?/i, "$1").replace(/[?&#]$/, "");
     $("#tcFrom").value = fmtHMS(t0); $("#tcTo").value = fmtHMS(t0 + 60); $("#url").value = "";
-    tcCheck(); $("#tcUrl").scrollIntoView({ behavior: "smooth", block: "center" }); $("#tcTo").focus();
+    tcCheck(); showPage("enviar"); setTimeout(() => { $("#tcUrl").scrollIntoView({ behavior: "smooth", block: "center" }); $("#tcTo").focus(); }, 60);
     toast("Esse link tem um tempo, então coloquei em ✂ Cortar um trecho de VOD (de " + fmtHMS(t0) + " até 1 min depois). Ajuste o fim e clique em ✂ Cortar esse trecho.", 9000);
     return;
   }
@@ -1082,7 +1186,15 @@ $("#vods").addEventListener("click", async e => {
   } catch (err) { toast(err.message); }
   loadState();
 });
-async function copy(text, msg){ try { await navigator.clipboard.writeText(text); toast(msg); } catch { toast("Não deu pra copiar. Selecione o texto e use Ctrl+C."); } }
+async function copy(text, msg){
+  try { if (!navigator.clipboard || !window.isSecureContext) throw 0; await navigator.clipboard.writeText(text); toast(msg); return; } catch {}
+  // pelo celular (endereço da rede de casa) o jeito moderno não funciona: usa o jeito antigo
+  const ta = Object.assign(document.createElement("textarea"), { value: text }); ta.setAttribute("readonly", "");
+  Object.assign(ta.style, { position: "fixed", top: "0", left: "0", opacity: "0" }); document.body.appendChild(ta);
+  ta.focus(); ta.select(); ta.setSelectionRange(0, text.length);
+  let ok = false; try { ok = document.execCommand("copy"); } catch {}
+  ta.remove(); toast(ok ? msg : "Não deu pra copiar. Segure o dedo no texto e copie.");
+}
 $("#clips").addEventListener("click", async e => {
   if (e.target.closest("a[data-hz]")) toast("Preparando o vídeo horizontal… o download começa sozinho (pode levar até 1 minuto).", 6000);
   const b = e.target.closest("button[data-c]"); if (!b) return;
@@ -1327,8 +1439,56 @@ $("#cmpItems").addEventListener("click", async e => {
 });
 setInterval(() => { if (CMP.items.some(x => x.status !== "pronto" && x.status !== "erro")) loadCompile().catch(() => {}); }, 4000);
 
+/* ------------------------------------------------------------ abas do painel */
+const PAGES = ["inicio", "cortes", "lives", "vods", "enviar", "compilado", "resultados", "espaco", "ajustes"];
+let curPage = null;
+function showPage(p, opts = {}){
+  if (!PAGES.includes(p)) p = "inicio";
+  curPage = p;
+  document.querySelectorAll(".page").forEach(s => s.classList.toggle("on", s.dataset.page === p));
+  document.querySelectorAll("#nav button").forEach(b => { const on = b.dataset.page === p; b.classList.toggle("on", on); if (on) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); });
+  try { localStorage.setItem("pagina", p); } catch {}
+  if (location.hash !== "#" + p) history.replaceState(null, "", "#" + p);
+  if (!opts.keepScroll) window.scrollTo({ top: 0 });
+  const nb = document.querySelector(`#nav button[data-page="${p}"]`); nb?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  if (p === "cortes") loadClips(true).catch(() => {});
+  if (p === "espaco") loadStorage();
+  if (p === "resultados") loadInsights();
+  if (p === "compilado") loadCompile().catch(() => {});
+  if (p === "inicio") loadNet();
+}
+$("#nav").addEventListener("click", e => { const b = e.target.closest("button[data-page]"); if (b) showPage(b.dataset.page); });
+document.addEventListener("click", e => {
+  const g = e.target.closest("[data-goto]"); if (!g) return;
+  if (g.dataset.status){ filt.status = g.dataset.status; document.querySelectorAll("#tabs button").forEach(x => x.classList.toggle("on", x.dataset.s === filt.status)); }
+  showPage(g.dataset.goto);
+  if (g.dataset.focus) setTimeout(() => document.getElementById(g.dataset.focus)?.focus(), 50);
+});
+window.addEventListener("hashchange", () => { const h = location.hash.slice(1); if (h !== curPage && PAGES.includes(h)) showPage(h); });
+function updateBadges(){
+  const C = ST.counts || {}, live = ST.channels.filter(c => c.status === "gravando").length;
+  const vq = (ST.vods || []).filter(v => !/^pronto|^erro|^cancelado/.test(v.status)).length;
+  const set = (id, n) => { const el = $(id); if (!el) return; el.hidden = !n; el.textContent = n > 99 ? "99+" : n; };
+  set("#nbCortes", C.pendente || 0); set("#nbLives", live); set("#nbVods", vq);
+  $("#tLives").textContent = live; $("#tNovos").textContent = C.pendente || 0; $("#tVods").textContent = vq; $("#tAprov").textContent = C.aprovado || 0;
+}
+/* ver no celular: endereço na rede de casa + QR code */
+let netLoaded = false;
+async function loadNet(){
+  if (netLoaded) return;
+  try {
+    const n = await api("/api/net"); netLoaded = true;
+    $("#lanUrl").textContent = n.url || "(não achei o endereço do computador na rede)";
+    if (n.qr){ $("#qrImg").src = n.qr; $("#qrImg").hidden = false; }
+    if (n.here_phone) $("#phoneCard").querySelector("h3").textContent = "📱 Você está vendo pelo celular";
+  } catch {}
+}
+$("#copyLan").onclick = () => copy($("#lanUrl").textContent, "Endereço copiado");
+
 /* ------------------------------------------------------------ início */
 for (const f of ["CortesAnton", "CortesArchivo", "CortesBangers", "CortesLuckiest", "CortesBebas"]) document.fonts?.load(`40px "${f}"`).catch(() => {});
+showPage((location.hash.slice(1) && PAGES.includes(location.hash.slice(1))) ? location.hash.slice(1)
+  : (() => { try { return localStorage.getItem("pagina"); } catch { return null; } })() || (innerWidth < 860 ? "cortes" : "inicio"), { keepScroll: true });
 loadState().then(() => { loadClips(true); loadStorage(); loadInsights(); loadCompile().catch(() => {}); }).catch(e => toast("Não conectou no programa: " + e.message, 8000));
 // com a aba escondida (minimizada / outra aba), o painel atualiza bem menos: não gasta o PC à toa
 let tick = 0;

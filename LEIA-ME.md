@@ -139,6 +139,13 @@ Instale nos dois PCs do mesmo jeito: Python, extrair o zip e `INICIAR.bat`.
 - Títulos, hashtags e tags de futebol, com o time quando ele falar (ex: "A REAÇÃO DO RENATO A ESSE GOL DO FLAMENGO").
 - Trocar um corte pronto pra "⚽ Futebol" deixa ele mais longo sozinho, usando a sobra guardada.
 
+## 📱 Ver no celular
+
+Com o computador ligado (janela preta aberta) e o celular no **mesmo Wi-Fi**, abra a aba **Início** do painel:
+tem o endereço (ex: `http://192.168.0.15:8000`) e um QR code. Pelo celular dá pra ver os cortes, assistir, baixar
+(⬇ Vertical) e copiar título/hashtags pra postar. Se não abrir: no Windows, permita o Python em "Redes privadas"
+(Firewall do Windows → Permitir um aplicativo) e deixe a rede de casa como "Rede privada".
+
 ## Recursos dos cortes
 
 - **Sobra antes e depois:** cada corte guarda 30s a mais antes e depois (muda em Ajustes). No ✂ Editar corte, puxe

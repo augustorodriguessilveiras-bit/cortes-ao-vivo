@@ -9,3 +9,5 @@ yt-dlp[default,curl-cffi]
 opencv-python-headless<5
 # chat da Kick (lido ao vivo pra achar momentos)
 websockets>=12
+# QR code pra abrir o painel no celular
+qrcode>=7

@@ -140,6 +140,7 @@ def state():
     return {"channels": chans, "vods": vods, "settings": settings.get_all(), "activity": list(ACTIVITY)[::-1][:15],
             "version": version.status(), "learning": quality.stats(), "speech": transcribe.status(),
             "styles": STYLES_INFO,
+            "counts": {r["status"]: r["n"] for r in db.query("SELECT status, COUNT(*) n FROM clips GROUP BY status")},
             "disk_free_gb": round(disk.free / 1e9, 1), "encoder": enc}
 
 
@@ -166,6 +167,56 @@ def speech_test():
     MANUAL_POOL.submit(run)
     plog.info("🗣 Testando o reconhecimento de fala (na 1ª vez baixa ~150 MB, pode levar uns minutos)…")
     return {"ok": True}
+
+
+# ------------------------------------------------------------ ver no celular (mesmo Wi-Fi)
+def _lan_ip():
+    """Endereço do computador na rede de casa (ex: 192.168.0.15). Não manda nada pra internet."""
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("10.255.255.255", 1))        # só escolhe a placa de rede; nenhum pacote é enviado
+        ip = s.getsockname()[0]
+        s.close()
+        if not ip.startswith("127."):
+            return ip
+    except OSError:
+        pass
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ip = info[4][0]
+            if not ip.startswith("127."):
+                return ip
+    except OSError:
+        pass
+    return None
+
+
+@app.get("/api/net")
+def net_info(request: Request):
+    ip = _lan_ip()
+    port = request.url.port or 8000
+    url = f"http://{ip}:{port}" if ip else None
+    host = (request.client.host if request.client else "") or ""
+    return {"url": url, "qr": "/api/net/qr.png" if url else None,
+            "here_phone": host not in ("127.0.0.1", "::1", "localhost") and host != ip}
+
+
+@app.get("/api/net/qr.png")
+def net_qr(request: Request):
+    ip = _lan_ip()
+    if not ip:
+        raise HTTPException(404, "Sem endereço na rede")
+    url = f"http://{ip}:{request.url.port or 8000}/#cortes"
+    try:
+        import io
+        import qrcode
+        img = qrcode.make(url, box_size=8, border=2)
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return Response(buf.getvalue(), media_type="image/png", headers={"Cache-Control": "no-store"})
+    except Exception:
+        raise HTTPException(404, "QR code indisponível (o endereço está escrito do lado)")
 
 
 @app.post("/api/settings")
