@@ -91,6 +91,11 @@ FOOT_WORDS = ("futebol", "brasileirao", "brasileirão", "libertadores", "copa do
               "esportes", "football", "soccer", "kings league", "pré-jogo", "pre-jogo", "pós-jogo", "pos-jogo")
 
 
+RIMA_WORDS = ("batalha de rima", "batalha da aldeia", "batalha do tanque", "batalha do real", "batalha de mc", "bda ",
+              "freestyle", "duelo de mc", "duelo de mcs", "rima ", "rimas", "batalha ", "roda cultural", "batalha da matrix",
+              "batalha do coliseu", "liga dos mcs", "duelo nacional")
+
+
 def guess_theme(info):
     """'gta', 'futebol' ou 'react' pelo título e categoria. Na dúvida, GTA (o foco)."""
     if not info:
@@ -102,6 +107,8 @@ def guess_theme(info):
         return "gta"
     if any(w in text for w in FOOT_WORDS):
         return "futebol"
+    if any(w in text for w in RIMA_WORDS):
+        return "rima"
     if any(w in text for w in REACT_WORDS):
         return "react"
     return "gta"

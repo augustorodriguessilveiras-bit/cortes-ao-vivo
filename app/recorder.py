@@ -404,11 +404,11 @@ class ChannelWorker(threading.Thread):
             info = info or sources.resolve(self.url, "worst")
             new = sources.guess_theme(info)
             self._title_theme = new
-            if time.time() < self.foot_until:      # a fala diz que ele está vendo jogo agora: fica no futebol
-                new = "futebol"
+            if time.time() < self.foot_until and self.theme in ("futebol", "rima"):   # a fala diz o que ele está vendo
+                new = self.theme
             if new != self.theme:
                 log.info("🎮 %s: tema da live agora é %s", self.name,
-                         {"gta": "GTA", "futebol": "futebol (reagindo a jogo) ⚽"}.get(new, "react/outros"))
+                         {"gta": "GTA", "futebol": "futebol (reagindo a jogo) ⚽", "rima": "batalha de rima 🎤"}.get(new, "react/outros"))
             self.theme = new
         except Exception:
             pass
@@ -503,12 +503,21 @@ class ChannelWorker(threading.Thread):
         recent = [t for s, e, t in list(self.speech_lines) if s >= self.speech_until - 240]
         text = " " + " ".join(quality._norm(t) for t in recent) + " "
         hits = len(quality.foot_hits(text)) + sum(text.count(f" {k} ") for k in TEAMS)
+        rima = len(quality.rima_hits(text)) + sum(text.count(f" {k} ") for k in ("rima", "batalha", "mc", "round", "freestyle"))
+        if rima >= 6 and rima > hits and self.theme != "rima":
+            log.info("🎤 %s: pela fala, ele está reagindo a batalha de rima. Os cortes agora saem nesse tema.", self.name)
+            self.theme = "rima"
+            self.foot_until = time.time() + 600
+            return
+        if self.theme == "rima" and rima >= 3:
+            self.foot_until = time.time() + 600
+            return
         if hits >= 5:
             if self.theme != "futebol":
                 log.info("⚽ %s: pela fala, ele está assistindo futebol. Os cortes agora saem no modo futebol.", self.name)
             self.theme = "futebol"
             self.foot_until = time.time() + 600            # fica no futebol até 10 min depois do último lance falado
-        elif self.theme == "futebol" and self.foot_until and time.time() > self.foot_until:
+        elif self.theme in ("futebol", "rima") and self.foot_until and time.time() > self.foot_until:
             self.foot_until = 0.0
             self.theme = getattr(self, "_title_theme", "gta")
             log.info("🎮 %s: parou de falar de futebol; voltando pro tema da live.", self.name)

@@ -150,6 +150,13 @@ tem o endereço (ex: `http://192.168.0.15:8000`) e um QR code. Pelo celular dá 
 e deixe ligado. O endereço de fora de casa (`http://100.x.x.x:8000`) e o QR code aparecem na aba Início.
 Só os seus aparelhos conseguem abrir.
 
+## 🎤 Batalha de rima (react)
+
+- Reconhece pelo título (batalha, rima, freestyle, Batalha da Aldeia...) ou pela fala na live; dá pra escolher
+  "🎤 Batalha de rima" no corte, no trecho de VOD ou no corte enviado.
+- Acha os momentos pelas reações ("que rima", "humilhou", "amassou", "OOOH", "punchline"...) e faz títulos,
+  hashtags (#batalhaderima #rap #freestyle) e tags de rima.
+
 ## Recursos dos cortes
 
 - **Sobra antes e depois:** cada corte guarda 30s a mais antes e depois (muda em Ajustes). No ✂ Editar corte, puxe

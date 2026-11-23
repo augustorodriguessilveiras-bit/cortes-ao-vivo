@@ -312,6 +312,13 @@ FUT_HOOKS = {
 }
 
 
+RIMA_TITLES = ["A REAÇÃO DO {N} A ESSA RIMA 🎤🔥", "ESSA RIMA DEIXOU O {N} SEM PALAVRAS 🎤😶", "O {N} NÃO ACREDITOU NESSA RIMA 🎤😱",
+               "O {N} REAGINDO A BATALHA DE RIMA 🎤🔥", "ESSA RESPOSTA DESTRUIU 🎤🔥 (REAÇÃO DO {N})", "O {N} FOI À LOUCURA COM ESSA RIMA 🎤",
+               "QUE RIMA! A CARA DO {N} 🎤😳", "O {N} ASSISTINDO BATALHA É OUTRO NÍVEL 🎤😂"]
+RIMA_HOOKS = ["ESPERA A RESPOSTA NO FINAL 🎤🔥", "OLHA A REAÇÃO DO {N} NESSA RIMA 🎤😱", "ESSA RIMA FOI CIRÚRGICA 🎤🔥",
+              "O {N} NÃO AGUENTOU ESSA 🎤😂", "QUE RESPOSTA! OLHA O {N} 🎤😳"]
+
+
 def fut_info(texts):
     """Tipo de lance e time mais falado no corte: (tipo, TIME ou None)."""
     t = " " + " ".join(_norm(x) for x in texts) + " "
@@ -358,6 +365,17 @@ def youtube_tags(channel, platform, cat, subject=None, theme="gta", team=None):
     plat = PLAT.get(platform, "").lower()
     r = rules.for_channel(channel)
     tags = list(r.get("yt_tags", [])) if r else []
+    if theme == "rima":
+        d = rules.display(channel).lower()
+        tags = [t for t in tags if "gta" not in t] + ["batalha de rima", "react batalha de rima", f"{d} reagindo batalha",
+               f"{d} react", "batalha da aldeia", "freestyle", "rap", "rima", "react rap", "melhores rimas", f"cortes {n}",
+               f"cortes do {d}", "react", "shorts", "cortes de live"]
+        out, size = [], 0
+        for t in tags:
+            if t and t not in out and size + len(t) + 2 <= 480:
+                out.append(t)
+                size += len(t) + 2
+        return ", ".join(out)
     if theme == "futebol":
         d = rules.display(channel).lower()
         tags = [t for t in tags if "gta" not in t]
@@ -405,6 +423,12 @@ def youtube_tags(channel, platform, cat, subject=None, theme="gta", team=None):
 def titles_for(channel, cat, subject, gain=0, theme="gta", fut=None):
     """Títulos possíveis já ajustados pras regras do canal. Retorna (lista, quantos do começo são ligados à cena)."""
     disp = rules.display(channel)
+    if theme == "rima":
+        N = disp.upper()
+        extra = set(rules.adapt(channel, [], "title"))
+        fa = [t for t in rules.adapt(channel, [t.replace("{N}", N) for t in RIMA_TITLES], "title") if t not in extra]
+        rest = [t for t in rules.adapt(channel, degta([t.replace("{N}", N) for t in REACT_TITLES]), "title") if t not in extra and t not in fa]
+        return fa + rest, len(fa)
     if theme == "futebol":
         N = disp.upper()
         kind, team = fut or ("geral", None)
@@ -438,6 +462,12 @@ def titles_for(channel, cat, subject, gain=0, theme="gta", fut=None):
 def hooks_for(channel, cat, subject, gain=0, quote="", theme="gta", fut=None):
     """Textos da faixa ajustados pras regras do canal. Retorna (ligados ao corte, outros)."""
     disp = rules.display(channel)
+    if theme == "rima":
+        N = disp.upper()
+        extra = set(rules.adapt(channel, [], "hook"))
+        q = [f'"{quote.strip().upper()}"'] if quote and 8 <= len(quote.strip()) <= 60 else []
+        fa = [t for t in rules.adapt(channel, q + [t.replace("{N}", N) for t in RIMA_HOOKS], "hook") if t not in extra]
+        return fa, [t for t in rules.adapt(channel, degta([t.replace("{N}", N) for t in REACT_HOOKS]), "hook") if t not in extra and t not in fa]
     if theme == "futebol":
         N = disp.upper()
         kind, team = fut or ("geral", None)
@@ -484,6 +514,8 @@ def make_meta(channel, platform, url, lines=(), manual=False, gain=0, avoid=(), 
     if rules.is_safe(channel) and cat in ("fail", "susto"):
         lead = "Melhor momento"
     desc = f"{lead} {do} {Nn} ao vivo no GTA 6 🎮" if theme == "gta" else f"{lead} {do} {Nn} reagindo ao vivo 🎥"
+    if theme == "rima":
+        desc = f"{Nn} reagindo à batalha de rima ao vivo 🎤🔥"
     if theme == "futebol":
         desc = f"{Nn} reagindo ao jogo{(' do ' + fut[1].title()) if fut and fut[1] else ''} ao vivo ⚽🔥"
     if chat_top and not rules.is_safe(channel):   # canais "safe": nada de comentário do chat na legenda
@@ -499,6 +531,9 @@ def make_meta(channel, platform, url, lines=(), manual=False, gain=0, avoid=(), 
     drop = {"#fyp", "#viral"} if rule else set()
     if theme == "react":   # react/outros: nada de hashtag de GTA
         base = [t for t in base if "gta" not in t.lower()] + ["#react", "#reacao"]
+    if theme == "rima":     # batalha de rima: hashtags de rap/rima
+        base = [t for t in base if "gta" not in t.lower() and t.lower() not in ("#fail", "#susto", "#epico")] + \
+            ["#batalhaderima", "#rap", "#freestyle", "#rima", "#react", "#reacao"]
     if theme == "futebol":  # futebol: hashtags de futebol (e do time, se ele falou)
         team_tag = ["#" + re.sub(r"[^a-z]", "", _norm(fut[1]))] if fut and fut[1] else []
         base = [t for t in base if "gta" not in t.lower() and t.lower() not in ("#fail", "#susto", "#epico")] + \
@@ -510,6 +545,11 @@ def make_meta(channel, platform, url, lines=(), manual=False, gain=0, avoid=(), 
         if t not in tags and t.lower() not in drop:
             tags.append(t)
     quote = quote_near(speech, peak_rel)
+    if theme == "rima" and speech:          # batalha: o texto do vídeo usa a frase da reação mais forte
+        from .quality import rima_hits
+        best = max(speech, key=lambda x: (len(rima_hits(_norm(x[2]))), -abs((x[0] + x[1]) / 2 - (peak_rel or 0))))
+        if rima_hits(_norm(best[2])):
+            quote = best[2]
     first, rest = hooks_for(channel, cat, subject, gain, quote, theme, fut)
     hook = pick_hook(first, rest, set(avoid_hooks) | {title, raw_title})
     return {

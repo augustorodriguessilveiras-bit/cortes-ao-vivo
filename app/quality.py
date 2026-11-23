@@ -34,6 +34,18 @@ FOOT = re.compile(r"\b(gol|golaco|go+l+|e gol|penalti|penalty|na trave|no traves
                   r"expulso|cartao vermelho|var|impedido|impedimento|juiz ladrao|ladrao|roubado|roubaram|que lance|"
                   r"que jogada|caneta|chapeu|drible|isolou|como perde|nao acredito|u+h+|balancou a rede|no angulo|"
                   r"contra ataque|olha o gol|vai vai vai|chuta|bateu)\b")
+# batalha de rima (streamer reagindo): o que ele fala quando a rima é boa
+RIMA = re.compile(r"\b(que rima|rimou|rimando|matou|amassou|humilhou|destruiu|brabo|braba|absurdo|punchline|que punch|"
+                  r"mandou bem|sem chance|acabou com ele|perdeu|ganhou|venceu|o+h+|uo+u+|pesado|pesadissimo|bars|"
+                  r"que flow|flow|resposta|respondeu|mandou a real|cirurgico|nao tem como|caralho|cabou)\b")
+RIMA_WEAK = {"perdeu", "ganhou", "venceu", "flow", "resposta", "respondeu", "absurdo", "caralho", "brabo", "braba"}
+
+
+def rima_hits(text):
+    """Reações a batalha de rima na frase (já normalizada)."""
+    return [m.group(1) for m in RIMA.finditer(text)]
+
+
 FOOT_WEAK = {"chuta", "bateu", "drible", "defendeu", "var", "impedido", "impedimento"}
 
 
@@ -112,7 +124,7 @@ def evaluate(signal, speech, peak_rel, dur=None):
     whole = _norm(" ".join(t for _, _, t in speech))
     react, disc, fun = _hits(text, REACTION), _hits(text, DISCOVERY), _hits(whole, FUNNY)
     bug = _hits(text, BUG)
-    foot = foot_hits(text)          # lance de futebol (gol, pênalti, que defesa...)
+    foot = foot_hits(text) + rima_hits(text)   # lance de futebol ou rima boa (react de batalha)
     liked = _liked(text)            # assuntos parecidos com os cortes que você aprovou
     bad = _disliked(text)           # assuntos parecidos com os cortes que você descartou
     excl = sum(t.count("!") + t.count("?") for _, _, t in near)
@@ -124,10 +136,10 @@ def evaluate(signal, speech, peak_rel, dur=None):
         content = 2.0 + min(2.0, ratio * 3) + min(5.0, len(react) * 1.8) + min(4.0, len(disc) * 1.8) \
             + min(4.5, len(bug) * 2.2) + min(4.0, len(fun) * 1.6) + min(0.8, excl * 0.2) + min(3.0, len(liked) * 1.6) - min(3.0, len(bad) * 1.5) + min(4.5, len(foot) * 1.8)
         content = max(0.0, min(10.0, content))
-        quote = max(near, key=lambda x: (len(_hits(_norm(x[2]), REACTION + DISCOVERY + FUNNY + BUG)) + len(foot_hits(_norm(x[2])))) * 10
+        quote = max(near, key=lambda x: (len(_hits(_norm(x[2]), REACTION + DISCOVERY + FUNNY + BUG)) + len(foot_hits(_norm(x[2]))) + len(rima_hits(_norm(x[2])))) * 10
                     + min(len(x[2]), 60))[2]
         if foot and len(foot) >= len(react):
-            reasons.append(f"⚽ lance: “{quote.strip()[:60]}”")
+            reasons.append(f"{'🎤 rima' if rima_hits(text) and not foot_hits(text) else '⚽ lance'}: “{quote.strip()[:60]}”")
         elif bug:
             reasons.append(f"🐞 bug no jogo: “{quote.strip()[:60]}”")
         elif disc and len(disc) >= len(react):
@@ -173,6 +185,7 @@ def speech_moment(text):
     found = _hits(t, REACTION) + _hits(t, DISCOVERY) + _hits(t, BUG) + _hits(t, FUNNY)
     strength = sum(0.5 if w in WEAK else 1.0 for w in dict.fromkeys(found))
     strength += sum(0.5 if w in FOOT_WEAK else 1.0 for w in dict.fromkeys(foot_hits(t)))   # lance de futebol
+    strength += sum(0.5 if w in RIMA_WEAK else 1.0 for w in dict.fromkeys(rima_hits(t)))   # rima boa
     strength += min(2, len(_liked(text))) * 1.0     # assunto que você curte (de cortes que você aprovou)
     strength -= min(2, len(_disliked(text))) * 0.75  # assunto que você costuma descartar
     if strength < 1:

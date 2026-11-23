@@ -518,7 +518,7 @@ def insights():
             "by_cat": group(lambda r: cats.get(r["cat"] or "geral", r["cat"])),
             "by_channel": group(lambda r: rules.display(r["channel_name"])),
             "by_style": group(lambda r: "Dinâmico" if r["style"] == "dinamico" else "Padrão"),
-            "by_theme": group(lambda r: {"react": "React", "futebol": "Futebol"}.get(r["theme"], "GTA")),
+            "by_theme": group(lambda r: {"react": "React", "futebol": "Futebol", "rima": "Batalha de rima"}.get(r["theme"], "GTA")),
             "by_platform": sorted(([{"tiktok": "TikTok", "reels": "Reels", "shorts": "Shorts"}.get(k, k),
                                     round(sum(v) / len(v)), len(v)] for k, v in plat.items()), key=lambda x: -x[1])}
 
@@ -663,7 +663,7 @@ class ThemeIn(BaseModel):
 @app.post("/api/clips/{clip_id}/theme")
 def set_theme(clip_id: int, body: ThemeIn):
     """Troca o tema do corte (GTA, react/outros ou futebol) e refaz título, descrição, hashtags, tags e texto."""
-    if body.theme not in ("gta", "react", "futebol"):
+    if body.theme not in ("gta", "react", "futebol", "rima"):
         raise HTTPException(400, "Tema inválido")
     c = _clip(clip_id)
     speech = [(0.0, 0.0, c["transcript"])] if c.get("transcript") else []
@@ -969,7 +969,7 @@ def _process_vodclip(url, a, b, theme_in, count=1):
         if name in ("kick", "twitch", "youtube"):
             name = (info.get("uploader_id") or info.get("channel") or info.get("uploader") or name).lower().replace(" ", "")
         name = re.sub(r"[^a-z0-9_]", "", name.lower()) or "vod"
-        theme = theme_in if theme_in in ("gta", "react", "futebol") else sources.guess_theme(info)
+        theme = theme_in if theme_in in ("gta", "react", "futebol", "rima") else sources.guess_theme(info)
         pad = float(settings.get("pad") or 0)
         start = max(0.0, a - pad)
         end = min(total, b + pad) if total else b + pad
@@ -1062,7 +1062,7 @@ def vod_clip(body: VodClipIn):
         nurl, name, plat, _ = sources.parse_link(url)
         vid = db.insert("vods", {"url": nurl, "name": name, "platform": plat, "added_at": time.time(),
                                  "range_start": a, "range_end": b, "title": f"Trecho {_fmt_t(a)} até {_fmt_t(b)}",
-                                 "theme": body.theme if body.theme in ("gta", "react", "futebol") else None})
+                                 "theme": body.theme if body.theme in ("gta", "react", "futebol", "rima") else None})
         vod.enqueue(vid)
         vod.to_front(vid)                       # você pediu agora: passa na frente dos VODs completos
         plog.info("✂ Procurando os melhores momentos do trecho %s até %s do VOD…", _fmt_t(a), _fmt_t(b))
@@ -1085,7 +1085,7 @@ async def upload_clip(request: Request, name: str, platform: str = "kick", theme
         raise HTTPException(400, "Escreva de qual streamer é o corte.")
     if platform not in PLATFORM_URL:
         platform = "kick"
-    theme = theme if theme in ("gta", "react", "futebol") else "gta"
+    theme = theme if theme in ("gta", "react", "futebol", "rima") else "gta"
     up = C.CLIPS_DIR / "enviados"
     up.mkdir(parents=True, exist_ok=True)
     raw = up / f"_recebendo_{int(time.time() * 1000)}{ext}"

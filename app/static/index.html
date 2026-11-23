@@ -329,7 +329,7 @@ details.meta[open] summary{margin-bottom:6px}
       <input type="text" id="upName" list="upNames" placeholder="De qual streamer? (ex: orenatovicente)" autocomplete="off" style="max-width:280px">
       <datalist id="upNames"></datalist>
       <select id="upPlat"><option value="kick">Kick</option><option value="twitch">Twitch</option><option value="youtube">YouTube</option></select>
-      <select id="upTheme"><option value="gta">GTA</option><option value="futebol">⚽ Futebol (reagindo a jogo)</option><option value="react">React (vídeo, filme, outro jogo)</option></select>
+      <select id="upTheme"><option value="gta">GTA</option><option value="futebol">⚽ Futebol (reagindo a jogo)</option><option value="rima">🎤 Batalha de rima (react)</option><option value="react">React (vídeo, filme, outro jogo)</option></select>
       <button class="primary" id="upBtn">📤 Enviar</button>
     </div>
     <div id="upProg" class="muted" hidden></div>
@@ -339,7 +339,7 @@ details.meta[open] summary{margin-bottom:6px}
       <input type="text" id="tcFrom" placeholder="De (ex: 3:13:00)" autocomplete="off" style="max-width:140px;min-width:110px;flex:0 1 140px">
       <input type="text" id="tcTo" placeholder="Até (ex: 3:15:00)" autocomplete="off" style="max-width:140px;min-width:110px;flex:0 1 140px">
       <select id="tcCount"><option value="1">1 corte (o trecho todo)</option><option value="0">Vários cortes (todos os momentos bons do trecho)</option></select>
-      <select id="tcTheme"><option value="auto">Tema: automático</option><option value="gta">GTA</option><option value="futebol">⚽ Futebol (reagindo a jogo)</option><option value="react">React / outros</option></select>
+      <select id="tcTheme"><option value="auto">Tema: automático</option><option value="gta">GTA</option><option value="futebol">⚽ Futebol (reagindo a jogo)</option><option value="rima">🎤 Batalha de rima (react)</option><option value="react">React / outros</option></select>
       <button class="primary" id="tcBtn">✂ Cortar esse trecho</button>
     </div>
     <div id="tcInfo" class="muted"></div>
@@ -833,7 +833,7 @@ function renderClips(force){
       ${c.title ? `<div class="ctitle">${esc(c.title)}</div>` : ""}
       ${c.rules ? ruleBox(c) : ""}
       <div class="reasons">${esc(c.reasons)}</div>
-      <div class="fmt">${c.theme === "react" ? "📺 Tema: react / outros" : c.theme === "futebol" ? "⚽ Tema: futebol (reagindo a jogo)" : "🎮 Tema: GTA 6"}</div>
+      <div class="fmt">${c.theme === "react" ? "📺 Tema: react / outros" : c.theme === "futebol" ? "⚽ Tema: futebol (reagindo a jogo)" : c.theme === "rima" ? "🎤 Tema: batalha de rima (react)" : "🎮 Tema: GTA 6"}</div>
       ${c.layout_used ? `<div class="fmt">📐 Formato: ${{ cam: "câmera em cima + gameplay", full: "tela cheia (full cam)", game: "só gameplay" }[c.layout_used] || c.layout_used}${(c.layout || "auto") === "auto" ? " (automático)" : ""}</div>` : ""}
       ${c.audio_info ? `<div class="fmt">🔊 ${esc(c.audio_info)}</div>` : ""}
       ${c.warn ? `<div class="warn">⚠ ${esc(c.warn)}</div>` : ""}
@@ -864,7 +864,7 @@ function renderClips(force){
       </div>
       <details class="meta" data-id="${id}" ${openMeta.has(id) ? "open" : ""}>
         <summary>📝 Título, descrição e hashtags</summary>
-        <label>🎮 Tema do corte<select data-theme="${id}"><option value="gta" ${(c.theme || "gta") === "gta" ? "selected" : ""}>GTA 6 (jogando)</option><option value="futebol" ${c.theme === "futebol" ? "selected" : ""}>⚽ Futebol (reagindo a jogo)</option><option value="react" ${c.theme === "react" ? "selected" : ""}>React / outros (assistindo vídeo, TikTok, papo)</option></select></label>
+        <label>🎮 Tema do corte<select data-theme="${id}"><option value="gta" ${(c.theme || "gta") === "gta" ? "selected" : ""}>GTA 6 (jogando)</option><option value="futebol" ${c.theme === "futebol" ? "selected" : ""}>⚽ Futebol (reagindo a jogo)</option><option value="rima" ${c.theme === "rima" ? "selected" : ""}>🎤 Batalha de rima (react)</option><option value="react" ${c.theme === "react" ? "selected" : ""}>React / outros (assistindo vídeo, TikTok, papo)</option></select></label>
         <label>Título<input type="text" data-f="title" data-id="${id}" value="${esc(c.title)}"></label>
         <label>Descrição<textarea data-f="descr" data-id="${id}">${esc(c.descr)}</textarea></label>
         <label>Hashtags<textarea data-f="tags" data-id="${id}">${esc(c.tags)}</textarea></label>
