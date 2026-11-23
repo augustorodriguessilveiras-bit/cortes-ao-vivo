@@ -52,6 +52,8 @@ main{max-width:1280px;width:100%;margin:0 auto;padding:22px 22px 60px;min-width:
 .phone p{margin:0 0 6px}
 .urlbox{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:16px;overflow-wrap:anywhere}
 .howcard summary{cursor:pointer;font-weight:600}
+.phoneonly{display:none}
+@media (max-width:860px), (pointer:coarse){ .phoneonly{display:inline-block} }
 .bzlist{display:flex;flex-direction:column;gap:6px}
 .bzitem{display:flex;flex-wrap:wrap;gap:6px;align-items:center;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:6px 8px;font-size:13px}
 .bzitem.on{border-color:var(--accent)}
@@ -900,7 +902,8 @@ function renderClips(force){
       </details>
       <div class="actions">
         ${gone ? "" : `<button class="small primary" data-c="edit" data-id="${id}">✂ Editar corte</button>
-        <a class="btn small" href="/media/${c.file_v}${v}" download>⬇ Vertical</a>
+        <a class="btn small" href="/api/clips/${id}/baixar" download>⬇ Vertical</a>
+        <button class="small primary phoneonly" data-c="salvar" data-id="${id}">📲 Salvar no celular</button>
         <a class="btn small" href="/api/clips/${id}/horizontal" download data-hz="1">⬇ Horizontal</a>
         <button class="small" data-c="cam" data-id="${id}">📐 Formato / câmera</button>`}
         ${c.status !== "aprovado" ? `<button class="small" data-c="aprovado" data-id="${id}">✔ Aprovar</button>` : ""}
@@ -1288,6 +1291,27 @@ $("#vods").addEventListener("click", async e => {
   } catch (err) { toast(err.message); }
   loadState();
 });
+/* 📲 salvar o corte no celular: a tela de compartilhar (Salvar vídeo) quando o celular deixa; senão, download */
+async function saveToPhone(c, btn){
+  const url = `/api/clips/${c.id}/baixar`, name = `${(c.channel_name || "corte").toLowerCase().replace(/[^a-z0-9_]/g, "")}_${c.id}.mp4`;
+  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
+  if (navigator.canShare && window.isSecureContext){
+    try {
+      btn.disabled = true; btn.textContent = "Preparando…";
+      const blob = await (await fetch(url)).blob();
+      const file = new File([blob], name, { type: "video/mp4" });
+      if (navigator.canShare({ files: [file] })){
+        await navigator.share({ files: [file], title: c.title || "Corte" });
+        btn.disabled = false; btn.textContent = "📲 Salvar no celular"; return;
+      }
+    } catch (e) { if (e && e.name === "AbortError"){ btn.disabled = false; btn.textContent = "📲 Salvar no celular"; return; } }
+    btn.disabled = false; btn.textContent = "📲 Salvar no celular";
+  }
+  const a = Object.assign(document.createElement("a"), { href: url, download: name }); document.body.appendChild(a); a.click(); a.remove();
+  toast(ios ? "Baixando… No iPhone ele vai pro app Arquivos → Downloads. Abra o vídeo lá, toque em compartilhar e em \"Salvar vídeo\" pra ir pra galeria."
+            : "Baixando… o vídeo vai pra pasta Download do celular.", 12000);
+}
+
 async function copy(text, msg){
   try { if (!navigator.clipboard || !window.isSecureContext) throw 0; await navigator.clipboard.writeText(text); toast(msg); return; } catch {}
   // pelo celular (endereço da rede de casa) o jeito moderno não funciona: usa o jeito antigo
@@ -1304,6 +1328,7 @@ $("#clips").addEventListener("click", async e => {
   const a = b.dataset.c;
   try {
     if (a === "edit") return openEditor(c);
+    if (a === "salvar") return saveToPhone(c, b);
     if (a === "cpt") return copy(c.title, "Título copiado");
     if (a === "cpm") return copy(c.rules?.mention || "", "@ copiado. Marque na postagem.");
     if (a === "lowfile"){

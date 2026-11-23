@@ -1163,6 +1163,17 @@ def retext(clip_id: int):
     return {"ok": True}
 
 
+@app.get("/api/clips/{clip_id}/baixar")
+def clip_download(clip_id: int):
+    """Baixar o vertical como DOWNLOAD de verdade (o iPhone, pelo endereço do PC, só abria o vídeo em vez de baixar)."""
+    c = _clip(clip_id)
+    f = C.CLIPS_DIR / (c.get("file_v") or "")
+    if c.get("files_deleted") or not c.get("file_v") or not f.exists():
+        raise HTTPException(404, "O vídeo desse corte não está mais no computador.")
+    name = re.sub(r"[^a-z0-9_]+", "", (c["channel_name"] or "corte").lower()) or "corte"
+    return FileResponse(f, media_type="video/mp4", filename=f"{name}_{clip_id}.mp4")
+
+
 @app.get("/api/clips/{clip_id}/horizontal")
 def clip_horizontal(clip_id: int):
     """Baixar o horizontal: monta na hora (com o pedaço escolhido e a marca d'água) se ainda não estiver pronto."""
