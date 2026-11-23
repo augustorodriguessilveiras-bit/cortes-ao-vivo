@@ -85,8 +85,23 @@ RULES = {
                   "duplo sentido ou trecho fora de contexto. Na dúvida, não poste.",
                   "Não vale corte de react de filme ou série."],
     },
+    "paulinholokobr": {
+        "label": "Campeonato Paulinho o Loko",
+        "display": "Paulinho",
+        "watermark": "kick.com/paulinholokobr",      # NO CORTE (não vale só na legenda/título)
+        "title_tag": "#paulinhooloko",               # obrigatória em todos os cortes
+        "mention": None,
+        "hashtags": ["#paulinhooloko", "#paulinholoko"],
+        "yt_tags": ["paulinho o loko", "paulinholoko", "paulinho loko", "paulinholokobr", "cortes paulinho o loko"],
+        "notes": ["Só valem trechos de lives e vídeos com o Paulinho de 17/10/2026 pra frente (campeonato de 22/11 a 22/12).",
+                  "Título, hashtags e legenda têm que ter a ver com o corte (nada aleatório nem em outro idioma).",
+                  "Não pode repetir o mesmo vídeo na mesma plataforma, nem postar muito corte só pra ganhar view.",
+                  "Não vale corte feito só com IA: revise e edite antes de postar.",
+                  "Proibido marca/link de casa de aposta ou afiliado no vídeo, na legenda ou na bio."],
+    },
 }
-ALIASES = {"renatovicente": "orenatovicente", "mitsuke01": "mitsuke", "yayah": "yayahuz", "luan": "luanz7",
+ALIASES = {"paulinholoko": "paulinholokobr", "paulinhooloko": "paulinholokobr", "paulinho": "paulinholokobr",
+           "paulinhoololoko": "paulinholokobr", "renatovicente": "orenatovicente", "mitsuke01": "mitsuke", "yayah": "yayahuz", "luan": "luanz7",
            "sofia": "sofiaespanha", "sofiaespanhaoficial": "sofiaespanha"}
 
 # palavras que não entram nos títulos/textos dos canais com regra "safe"

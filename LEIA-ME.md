@@ -180,6 +180,7 @@ Alguns canais têm regras próprias, aplicadas sozinhas só nos cortes deles (ar
 
 Em todos: sem #fyp/#viral (hashtags ligadas ao conteúdo). Na Yayah, só títulos e textos respeitosos, no feminino,
 e sem comentário do chat na descrição.
+- **Paulinho o Loko** (kick.com/paulinholokobr): marca d'água `kick.com/paulinholokobr` no corte e `#paulinhooloko` em todos.
 
 ## Ajustes (arquivo `.env`)
 | Opção | O que faz |
