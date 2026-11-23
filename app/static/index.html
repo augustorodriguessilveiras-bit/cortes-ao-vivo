@@ -479,6 +479,10 @@ function drawVertical(ctx, img, vw, vh, cam, W, H, caption, layout, opts = {}){
   if (opts.wm && opts.wm.img){        // Lower do campeonato, já sem fundo (mesmo tamanho do vídeo final)
     const im = opts.wm.img, iw = im.naturalWidth || im.width, ih = im.naturalHeight || im.height;
     const w = W * (opts.wm.wf ?? 0.86), h = w * ih / iw;
+    if (opts.wm.auto){       // padrão: logo acima do título (ou no pé da câmera, sem título)
+      const top = capRect ? capRect.y : yDef, cy = Math.max(h / 2, top - 8 * W / 1080 - h / 2);
+      opts.wm.x = 0.5; opts.wm.y = cy / H; if (opts.wm.set) opts.wm.set({ x: 0.5, y: cy / H });
+    }
     const x = Math.max(0, Math.min(W - w, opts.wm.x * W - w / 2)), y = Math.max(0, Math.min(H - h, opts.wm.y * H - h / 2));
     ctx.drawImage(im, x, y, w, h); wmRect = { x, y, w, h };
   } else if (opts.wm && opts.wm.text) wmRect = drawWatermark(ctx, opts.wm.text, W, H, (opts.wm.x ?? 0.5) * W, (opts.wm.y ?? 0.8) * H, opts.sty && opts.sty.wm);
@@ -816,9 +820,9 @@ async function loadClips(force){
 function ruleBox(c){
   const r = c.rules, id = c.id, hasTag = !r.title_tag || (c.title || "").toLowerCase().includes(r.title_tag.toLowerCase());
   return `<div class="rulebox"><b>📜 ${esc(r.label)}</b>
-    ${r.watermark ? `<span>✓ Marca d'água ${esc(r.watermark)} no corte inteiro</span>` : ""}
+    ${r.watermark && !r.lower_url ? `<span>✓ Marca d'água ${esc(r.watermark)} no corte inteiro${r.lower ? " (até você enviar o Lower)" : ""}</span>` : ""}
     ${r.lower ? (r.lower_missing
-      ? `<span class="bad">⚠ Falta o Lower do campeonato. Ele vai em todo corte do canal.</span>
+      ? `<span class="${r.watermark ? "" : "bad"}">${r.watermark ? "💡 Pode usar o Lower (GIF) do campeonato no lugar do texto:" : "⚠ Falta o Lower do campeonato. Ele vai em todo corte do canal."}</span>
          <span class="actions"><button class="small primary" data-c="lowlink" data-id="${id}">🔗 Colar link do Drive</button><button class="small" data-c="lowfile" data-id="${id}">📁 Enviar arquivo</button></span>`
       : `<span>✓ Lower do campeonato no corte <button class="small" data-c="lowfile" data-id="${id}">Trocar</button></span>`) : ""}
     ${r.title_tag ? `<span class="${hasTag ? "" : "bad"}">${hasTag ? "✓" : "⚠ Falta"} ${esc(r.title_tag)} no título</span>` : ""}
@@ -834,9 +838,10 @@ function lowerImg(r){
 }
 function markOpts(c, x, y){
   if (!c.rules) return null;
-  if (c.rules.watermark) return { text: c.rules.watermark, x: x ?? 0.5, y: y ?? 0.8 };
   const im = lowerImg(c.rules);
-  return im ? { img: im, x: x ?? c.rules.lower_x ?? 0.5, y: y ?? c.rules.lower_y ?? 0.8, wf: c.rules.lower_wf ?? 0.86 } : null;
+  if (c.rules.lower_url) return im ? { img: im, x: x ?? 0.5, y: y ?? 0.8, wf: c.rules.lower_wf ?? 0.86, auto: x == null } : null;
+  if (c.rules.watermark) return { text: c.rules.watermark, x: x ?? 0.5, y: y ?? 0.8 };
+  return null;
 }
 async function uploadLower(key, file){
   try {
@@ -896,8 +901,9 @@ function openEditor(c){
     on: ovOn(c), text: c.overlay || "",
     ca: c.cap_start ?? 0, cb: c.cap_end ?? (secs > 40 ? 9999 : secs), capY: c.cap_y ?? null,
     wm: (c.rules && (c.rules.watermark || c.rules.lower_url))
-      ? { x: c.wm_x ?? (c.rules.lower_url ? c.rules.lower_x ?? 0.5 : 0.5), y: c.wm_y ?? (c.rules.lower_url ? c.rules.lower_y ?? 0.8 : 0.8) } : null });
-  if (ED.wm) Object.assign(ED.wm, c.rules.watermark ? { text: c.rules.watermark } : { lowerOf: c.rules });
+      ? { x: c.wm_x ?? 0.5, y: c.wm_y ?? 0.8, auto: !!c.rules.lower_url && c.wm_x == null } : null });
+  // com o Lower enviado, ele vale no lugar da marca d'água em texto
+  if (ED.wm) Object.assign(ED.wm, c.rules.lower_url ? { lowerOf: c.rules } : { text: c.rules.watermark });
   $("#edWmBox").hidden = !ED.wm;
   $("#edOn").checked = ED.on; $("#edText").value = ED.text;
   $("#edSubs").checked = ED.subs; $("#edZoom").checked = ED.zoom; edSubInfo();
@@ -957,7 +963,7 @@ function edLoop(){
     // fora do tempo do texto ele aparece apagadinho, só pra dar pra arrastar
     ED.rects = drawVertical(cv.getContext("2d"), v, v.videoWidth, v.videoHeight, lay === "cam" ? c.cam : null, cv.width, cv.height,
       ED.on ? ED.text : "", lay, { capY: ED.capY, capAlpha: inWin ? 1 : 0.35, sty: edSty(),
-        wm: ED.wm ? (ED.wm.lowerOf ? (lowerImg(ED.wm.lowerOf) ? { img: lowerImg(ED.wm.lowerOf), x: ED.wm.x, y: ED.wm.y, wf: ED.wm.lowerOf.lower_wf } : null) : ED.wm) : null });
+        wm: ED.wm ? (ED.wm.lowerOf ? (lowerImg(ED.wm.lowerOf) ? { img: lowerImg(ED.wm.lowerOf), x: ED.wm.x, y: ED.wm.y, wf: ED.wm.lowerOf.lower_wf, auto: ED.wm.auto, set: p => Object.assign(ED.wm, p) } : null) : ED.wm) : null });
     $("#edTime").textContent = `${fmtT(v.currentTime)}  ·  no corte: ${fmtT(rel)} de ${fmtT(clipLen())}`;
     $("#edHead").style.left = `${(v.currentTime / ED.dur * 100).toFixed(2)}%`;
   }
@@ -997,7 +1003,7 @@ $("#edCaNow").onclick = () => { ED.ca = Math.max(0, ED.v.currentTime - ED.ts); s
 $("#edCbNow").onclick = () => { ED.cb = Math.max(ED.ca + 0.5, ED.v.currentTime - ED.ts); syncEditor(); };
 $("#edCapAll").onclick = () => { ED.ca = 0; ED.cb = 9999; syncEditor(); };
 document.querySelectorAll("[data-capy]").forEach(b => b.onclick = () => { ED.capY = b.dataset.capy === "def" ? null : +b.dataset.capy; });
-document.querySelectorAll("[data-wmy]").forEach(b => b.onclick = () => { if (ED.wm){ ED.wm.y = +b.dataset.wmy; ED.wm.x = 0.5; } });
+document.querySelectorAll("[data-wmy]").forEach(b => b.onclick = () => { if (ED.wm){ ED.wm.y = +b.dataset.wmy; ED.wm.x = 0.5; ED.wm.auto = false; } });
 // arrastar texto e marca d'água na prévia
 function edPt(e){ const cv = $("#edCanvas"), r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * cv.width, y: (e.clientY - r.top) / r.height * cv.height }; }
 const inRect = (p, r) => r && p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
@@ -1011,7 +1017,7 @@ $("#edCanvas").addEventListener("pointerdown", e => {
 $("#edCanvas").addEventListener("pointermove", e => {
   if (!ED.drag) return; const p = edPt(e), cv = $("#edCanvas");
   if (ED.drag.what === "cap") ED.capY = Math.min(0.97, Math.max(0.03, (p.y - ED.drag.dy) / cv.height));
-  else { ED.wm.x = Math.min(0.97, Math.max(0.03, (p.x - ED.drag.dx) / cv.width)); ED.wm.y = Math.min(0.98, Math.max(0.02, (p.y - ED.drag.dy) / cv.height)); }
+  else { ED.wm.auto = false; ED.wm.x = Math.min(0.97, Math.max(0.03, (p.x - ED.drag.dx) / cv.width)); ED.wm.y = Math.min(0.98, Math.max(0.02, (p.y - ED.drag.dy) / cv.height)); }
 });
 $("#edCanvas").addEventListener("pointerup", () => { ED.drag = null; $("#edCanvas").classList.remove("drag"); });
 async function saveEditor(reset){
@@ -1025,7 +1031,7 @@ async function saveEditor(reset){
         subs_on: ED.subs ? true : null, zoom_on: ED.zoom === ED.dynDef ? null : ED.zoom, sub_y: ED.subY,
         cap_style: $("#edCapStyle").value, cap_font: $("#edCapFont").value, wm_style: $("#edWmStyle").value,
         cap_start: +ED.ca.toFixed(2), cap_end: ED.cb >= 9000 ? 9999 : +ED.cb.toFixed(2),
-        cap_y: ED.capY, wm_x: ED.wm ? +ED.wm.x.toFixed(3) : null, wm_y: ED.wm ? +ED.wm.y.toFixed(3) : null,
+        cap_y: ED.capY, wm_x: ED.wm && !ED.wm.auto ? +ED.wm.x.toFixed(3) : null, wm_y: ED.wm && !ED.wm.auto ? +ED.wm.y.toFixed(3) : null,
         overlay: ED.text, overlay_on: ED.on };
   try {
     await post(`/api/clips/${c.id}/edit`, body);
@@ -1087,7 +1093,7 @@ $("#clips").addEventListener("click", async e => {
     if (a === "cpt") return copy(c.title, "Título copiado");
     if (a === "cpm") return copy(c.rules?.mention || "", "@ copiado. Marque na postagem.");
     if (a === "lowfile"){
-      const inp = Object.assign(document.createElement("input"), { type: "file", accept: "image/*,video/*,.png,.jpg,.jpeg,.webp,.mp4,.mov,.webm" });
+      const inp = Object.assign(document.createElement("input"), { type: "file", accept: "image/*,video/*,.png,.jpg,.jpeg,.webp,.gif,.mp4,.mov,.webm" });
       inp.onchange = () => inp.files[0] && uploadLower(c.rules.key, inp.files[0]); inp.click(); return;
     }
     if (a === "lowlink"){

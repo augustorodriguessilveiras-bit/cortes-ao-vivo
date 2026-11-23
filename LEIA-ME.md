@@ -180,7 +180,8 @@ Alguns canais têm regras próprias, aplicadas sozinhas só nos cortes deles (ar
 
 Em todos: sem #fyp/#viral (hashtags ligadas ao conteúdo). Na Yayah, só títulos e textos respeitosos, no feminino,
 e sem comentário do chat na descrição.
-- **Paulinho o Loko** (kick.com/paulinholokobr): marca d'água `kick.com/paulinholokobr` no corte e `#paulinhooloko` em todos.
+- **Paulinho o Loko** (kick.com/paulinholokobr): `#paulinhooloko` em todos; marca d'água `kick.com/paulinholokobr` no corte, ou o Lower (GIF) dele, se você enviar no cartão do corte.
+- **Lower (Paulinho, Luanz7):** envie o arquivo (GIF animado, PNG ou vídeo) no cartão do corte. Ele fica logo acima do título, embaixo da câmera, e dá pra arrastar no ✂ Editar corte. Sem o Lower, sai a marca d'água em texto.
 
 ## Ajustes (arquivo `.env`)
 | Opção | O que faz |

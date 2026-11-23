@@ -425,7 +425,23 @@ def lower_input(path, dur):
         return ["-stream_loop", "-1", "-t", f"{dur:.2f}", "-i", str(path)], (w, h)
     with Image.open(path) as im:
         w, h = im.size
+        animated = getattr(im, "is_animated", False)
+    if animated:      # GIF animado: fica repetindo a animação o corte inteiro
+        return ["-stream_loop", "-1", "-t", f"{dur:.2f}", "-i", str(path)], (w, h)
     return ["-loop", "1", "-t", f"{dur:.2f}", "-i", str(path)], (w, h)
+
+
+def _gif_frames(path, n=10):
+    """Alguns quadros de um GIF/WEBP animado (o 1º quadro pode ser vazio: a animação aparece depois)."""
+    from PIL import ImageSequence
+    out = []
+    with Image.open(path) as im:
+        total = getattr(im, "n_frames", 1)
+        want = {int(i * total / n) for i in range(n)} if total > 1 else {0}
+        for i, fr in enumerate(ImageSequence.Iterator(im)):
+            if i in want:
+                out.append(fr.convert("RGBA").copy())
+    return out
 
 
 _lower_cache = {}
@@ -459,7 +475,8 @@ def lower_info(path):
     else:
         with Image.open(path) as im:
             lw, lh = im.size
-            frames.append(np.asarray(im.convert("RGBA")).astype(np.int16))
+        for fr in _gif_frames(path):
+            frames.append(np.asarray(fr).astype(np.int16))
     if not frames:
         info = {"size": (lw, lh), "key": None, "box": (0, 0, lw, lh), "cx": 0.5, "cy": 0.5, "wfrac": 1.0}
         _lower_cache[stamp] = info
@@ -509,6 +526,13 @@ def lower_filter(info, target_w):
 def lower_preview_png(path, out):
     """Imagem do Lower já sem fundo e recortada (pra prévia no painel)."""
     info = lower_info(path)
+    if Path(path).suffix.lower() not in VIDEO_EXT:
+        frames = _gif_frames(path)
+        if len(frames) > 1 or not info["key"]:
+            best = max(frames, key=lambda f: sum(f.getchannel("A").point(lambda a: 255 if a > 20 else 0).histogram()[255:]))
+            x, y, bw, bh = info["box"]
+            best.crop((x, y, x + bw, y + bh)).save(out)
+            return info
     vid = Path(path).suffix.lower() in VIDEO_EXT
     seek = ["-ss", f"{probe(path)[2] * 0.5:.2f}"] if vid else []
     x, y, bw, bh = info["box"]
@@ -771,6 +795,22 @@ def vertical_filter(vw, vh, layout, cam, focus_x, cap_h, cap_secs, dur=0, wm_idx
     return f
 
 
+def _above_caption(vw, vh, layout, cam, cap_h, cap_y, item_h, gap=8):
+    """Centro (em px) pra um selo ficar logo acima da faixa do título (ou no pé da câmera, se não tiver título)."""
+    if layout == "cam" and cam:
+        cw, ch = cam["w"] * vw, cam["h"] * vh
+        th = even(min(H * 0.42, max(H * 0.28, W / (cw / ch))))
+        center = th
+    elif layout == "full":
+        center = H * 0.70
+    else:
+        center = (H - even(W * vh / vw)) // 2
+    if cap_y is not None:
+        center = cap_y * H
+    top = center - (cap_h / 2 if cap_h else 0)
+    return max(item_h / 2, top - gap - item_h / 2)
+
+
 def make_vertical(h_path, out, thumb, cam=None, caption="", cap_secs=10, layout="auto", watermark=None,
                   trim=None, cap_win=None, cap_y=None, wm_pos=None, audio_mode="auto", subs=None, sub_y=None, zooms=None,
                   styles=None):
@@ -818,7 +858,10 @@ def make_vertical(h_path, out, thumb, cam=None, caption="", cap_secs=10, layout=
         full_design = lh / lw > 1.2      # feito pra tela inteira em pé: mantém o tamanho do desenho original
         tw = W * info["wfrac"] if full_design else W * 0.86
         th = tw * info["box"][3] / max(1, info["box"][2])
-        wx, wy = wm_pos if wm_pos else ((info["cx"], info["cy"]) if full_design else (0.5, 0.80))
+        if wm_pos:
+            wx, wy = wm_pos
+        else:     # padrão: logo acima do título (embaixo da câmera); arrastável no editor
+            wx, wy = 0.5, _above_caption(vw, vh, layout, cam, cap_h, cap_y, th) / H
         wm_pre, wm_y, wm_xc = lower_filter(info, tw), int(H * wy - th / 2), W * wx
         wm_idx = 2 if cap_h else 1
     elif watermark:

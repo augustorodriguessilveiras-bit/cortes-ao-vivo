@@ -729,7 +729,7 @@ async def upload_lower(key: str, request: Request):
     name = urllib.parse.unquote(request.headers.get("x-filename", "lower.png"))
     ext = ("." + name.rsplit(".", 1)[-1].lower()) if "." in name else ""
     if ext not in rules.IMG_EXT + rules.VID_EXT:
-        raise HTTPException(400, f"Formato {ext or '?'} não serve. Envie PNG, JPG, MP4, MOV ou WEBM.")
+        raise HTTPException(400, f"Formato {ext or '?'} não serve. Envie GIF, PNG, JPG, MP4, MOV ou WEBM.")
     data = await request.body()
     out = rules.LOWERS_DIR / f"{key}.new{ext}"
     out.write_bytes(data)

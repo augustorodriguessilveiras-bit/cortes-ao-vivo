@@ -52,6 +52,7 @@ RULES = {
         "label": "Campeonato Luanz7",
         "display": "Luan",
         "lower": True,                               # imagem oficial "Lower - Luanz7" no corte
+        "watermark": "kick.com/luanz7",              # enquanto o Lower não for enviado
         "title_tag": "#luanz7",
         "mention": "@luanz7",
         "hashtags": ["#luanz7"],
@@ -88,7 +89,8 @@ RULES = {
     "paulinholokobr": {
         "label": "Campeonato Paulinho o Loko",
         "display": "Paulinho",
-        "watermark": "kick.com/paulinholokobr",      # NO CORTE (não vale só na legenda/título)
+        "lower": True,                               # GIF "Lower - Paulinho Loko" (opcional na regra)
+        "watermark": "kick.com/paulinholokobr",      # NO CORTE; usado enquanto o Lower não for enviado
         "title_tag": "#paulinhooloko",               # obrigatória em todos os cortes
         "mention": None,
         "hashtags": ["#paulinhooloko", "#paulinholoko"],
@@ -192,7 +194,7 @@ def mark_for(name):
     if not r:
         return None
     if r.get("lower"):
-        return lower_file(name)
+        return lower_file(name) or r.get("watermark")     # sem o Lower enviado: marca d'água em texto
     return r.get("watermark")
 
 
