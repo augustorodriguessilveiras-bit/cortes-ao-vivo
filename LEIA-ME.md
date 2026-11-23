@@ -177,6 +177,8 @@ Só os seus aparelhos conseguem abrir.
   Os cortes saem no estilo padrão (faixa branca, marca d'água escura); você muda as cores em cada corte no
   ✂ Editar corte. Em Ajustes dá pra mudar o padrão ou escolher "Variar sozinho".
   Fontes: Anton, Archivo Black, Bangers, Bebas Neue (licença OFL) e Luckiest Guy (licença Apache), em app/static/fonts.
+- **🔞 Censura:** no ✂ Editar corte, "+ Censurar uma parte" põe um quadrado borrado, pixelado ou tarja preta onde você
+  arrastar, no tempo que escolher (vários por corte). Fica por baixo do título e da marca d'água. Vale no vertical.
 - **📤 Enviar um corte seu:** manda um trecho que você cortou e ele sai no mesmo formato dos automáticos.
 - **✂ Cortar um trecho de VOD:** cole o link do vídeo da live e o tempo (ex: de 3:13:00 até 3:15:00). O programa
   baixa só esse pedaço, com a sobra antes e depois, e monta o corte no mesmo estilo. Escolha "1 corte" (o trecho

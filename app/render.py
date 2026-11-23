@@ -731,8 +731,45 @@ def detect_layout(h_path, cam):
     return default
 
 
+def censor_chain(src, blurs, dur):
+    """
+    Censura (borrado, pixelado ou tarja preta) em partes do vídeo vertical, cada uma no seu tempo.
+    blurs: [{x, y, w, h (0 a 1 do vídeo vertical), t0, t1 (segundos do corte), kind}]. Retorna (filtro, rótulo final).
+    """
+    f, cur = "", src
+    for i, b in enumerate(blurs or []):
+        try:
+            x, y = int(max(0, min(1, float(b["x"]))) * W), int(max(0, min(1, float(b["y"]))) * H)
+            w, h = int(max(0.02, min(1, float(b["w"]))) * W), int(max(0.02, min(1, float(b["h"]))) * H)
+        except (KeyError, TypeError, ValueError):
+            continue
+        x, y = even(x) - 2 if even(x) > x else even(x), even(y) - 2 if even(y) > y else even(y)
+        w, h = even(min(w, W - x)), even(min(h, H - y))
+        if w < 8 or h < 8:
+            continue
+        t0 = max(0.0, float(b.get("t0") or 0))
+        t1 = float(b.get("t1")) if b.get("t1") is not None else 1e9
+        t1 = min(t1, dur + 1) if dur else t1
+        en = f"enable='between(t,{t0:.2f},{t1:.2f})'"
+        kind = b.get("kind") or "blur"
+        out = f"cz{i}"
+        if kind == "preto":
+            f += f";[{cur}]drawbox=x={x}:y={y}:w={w}:h={h}:color=black:t=fill:{en}[{out}]"
+        else:
+            if kind == "pixel":
+                fx = f"scale={max(2, w // 28)}:{max(2, h // 28)},scale={w}:{h}:flags=neighbor"
+            else:
+                r = max(2, min(40, min(w, h) // 5, min(w, h) // 4 - 1))
+                fx = f"boxblur={r}:3"
+            f += (f";[{cur}]split=2[cza{i}][czb{i}];[czb{i}]crop={w}:{h}:{x}:{y},{fx}[czc{i}];"
+                  f"[cza{i}][czc{i}]overlay={x}:{y}:{en}[{out}]")
+        cur = out
+    return f, cur
+
+
 def vertical_filter(vw, vh, layout, cam, focus_x, cap_h, cap_secs, dur=0, wm_idx=None, wm_y=0,
-                    cap_win=None, cap_yc=None, wm_xc=None, wm_pre="", zooms=None, fps="30", sub_idx=None, sub_y=None):
+                    cap_win=None, cap_yc=None, wm_xc=None, wm_pre="", zooms=None, fps="30", sub_idx=None, sub_y=None,
+                    blurs=None):
     """Monta o filtro do ffmpeg pro formato escolhido, com a faixa do título se tiver."""
     zp = lambda w, h: (f",zoompan=z='{zoom_expr(zooms)}':x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':d=1:s={w}x{h}:fps={fps}"
                        if zooms else "")
@@ -766,6 +803,10 @@ def vertical_filter(vw, vh, layout, cam, focus_x, cap_h, cap_secs, dur=0, wm_idx
              f"boxblur=6:3,eq=brightness=-0.08,scale={W}:{H}:flags=bilinear[bg];[b]scale={W}:{fit_h},setsar=1{zp(W, fit_h)}[fg];"
              f"[bg][fg]overlay=0:{(H - fit_h) // 2}[base]")
         y = (H - fit_h) // 2 - cap_h // 2
+    # censura: aplicada no vídeo, por baixo do título, da legenda e da marca d'água (eles continuam legíveis)
+    f = f.replace("[base]", "[base0]")
+    chain, last = censor_chain("base0", blurs, dur)
+    f += chain + f";[{last}]null[base]"
     if cap_yc is not None:          # posição escolhida no editor (centro da faixa)
         y = int(cap_yc) - cap_h // 2
     y = max(0, min(H - cap_h, y))
@@ -813,7 +854,7 @@ def _above_caption(vw, vh, layout, cam, cap_h, cap_y, item_h, gap=8):
 
 def make_vertical(h_path, out, thumb, cam=None, caption="", cap_secs=10, layout="auto", watermark=None,
                   trim=None, cap_win=None, cap_y=None, wm_pos=None, audio_mode="auto", subs=None, sub_y=None, zooms=None,
-                  styles=None):
+                  styles=None, blurs=None):
     """
     Monta o vertical. layout: 'auto' (decide sozinho), 'cam', 'full' ou 'game'. Retorna o formato usado.
     trim: (início, fim) em segundos dentro do corte · cap_win: (aparece, some) do texto, contando do início do corte
@@ -881,7 +922,7 @@ def make_vertical(h_path, out, thumb, cam=None, caption="", cap_secs=10, layout=
     flt = vertical_filter(vw, vh, layout, cam, focus_x, cap_h, cap_secs, dur, wm_idx, wm_y,
                           cap_win=cap_win, cap_yc=(cap_y * H if cap_y is not None else None), wm_xc=wm_xc, wm_pre=wm_pre,
                           zooms=[z for z in (zooms or []) if z < dur - 1], fps=fps_of(h_path) if zooms else "30",
-                          sub_idx=sub_idx, sub_y=sub_yc)
+                          sub_idx=sub_idx, sub_y=sub_yc, blurs=blurs)
     afx, ainfo = audio_fix(h_path, ts, dur, audio_mode)
     afx += [f"afade=t=out:st={max(0.0, dur - 0.6):.2f}:d=0.6"] if dur > 3 else []
     afade = ["-af", ",".join(afx)] if afx else []

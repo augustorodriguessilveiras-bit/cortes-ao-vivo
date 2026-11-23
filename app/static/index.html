@@ -52,6 +52,10 @@ main{max-width:1280px;width:100%;margin:0 auto;padding:22px 22px 60px;min-width:
 .phone p{margin:0 0 6px}
 .urlbox{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:16px;overflow-wrap:anywhere}
 .howcard summary{cursor:pointer;font-weight:600}
+.bzlist{display:flex;flex-direction:column;gap:6px}
+.bzitem{display:flex;flex-wrap:wrap;gap:6px;align-items:center;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:6px 8px;font-size:13px}
+.bzitem.on{border-color:var(--accent)}
+.bzitem b{min-width:76px}
 #diagCard{margin-bottom:14px}
 .diagtips{margin:0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:6px;font-size:14px}
 .diagtips li{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 12px}
@@ -485,6 +489,11 @@ details.meta[open] summary{margin-bottom:6px}
         <div class="edrow"><button class="small" id="edCaNow">Aparecer a partir daqui</button><button class="small" id="edCbNow">Sumir aqui</button><button class="small" id="edCapAll">O corte todo</button></div>
         <div class="edrow">Lugar do texto: <button class="small" data-capy="0.12">Em cima</button><button class="small" data-capy="def">Padrão</button><button class="small" data-capy="0.5">Meio</button><button class="small" data-capy="0.86">Embaixo</button></div>
 
+        <h3>🔞 Censura (borrar uma parte)</h3>
+        <div class="edrow"><button class="small primary" id="bzAdd">+ Censurar uma parte</button>
+          <span class="muted" style="font-size:12px">Arraste o quadrado na prévia pra cima do que quer esconder e puxe o cantinho pra aumentar. Vale no vídeo vertical (o que você posta); o ⬇ Horizontal sai sem censura.</span></div>
+        <div id="bzList" class="bzlist"></div>
+
         <h3>🎨 Cores e letra do título</h3>
         <div class="stysel"><select id="edCapStyle" aria-label="Cores do título"></select><select id="edCapFont" aria-label="Letra do título"></select></div>
 
@@ -598,6 +607,7 @@ function drawVertical(ctx, img, vw, vh, cam, W, H, caption, layout, opts = {}){
       yDef = (H - fitH) / 2;
     }
   }
+  if (opts.beforeCaption) opts.beforeCaption(ctx, W, H);
   const capRect = drawCaption(ctx, caption, W, opts.capY != null ? opts.capY * H : yDef, opts.capAlpha ?? 1, H, opts.sty);
   let wmRect = null;
   if (opts.wm && opts.wm.img){        // Lower do campeonato, já sem fundo (mesmo tamanho do vídeo final)
@@ -844,6 +854,7 @@ function renderClips(force){
       ${c.title ? `<div class="ctitle">${esc(c.title)}</div>` : ""}
       ${c.rules ? ruleBox(c) : ""}
       <div class="reasons">${esc(c.reasons)}</div>
+      ${c.blurs && c.blurs !== "[]" ? `<div class="fmt">🔞 Com censura (${JSON.parse(c.blurs).length}) no vídeo vertical</div>` : ""}
       <div class="fmt">${c.theme === "react" ? "📺 Tema: react / outros" : c.theme === "futebol" ? "⚽ Tema: futebol (reagindo a jogo)" : c.theme === "rima" ? "🎤 Tema: batalha de rima (react)" : "🎮 Tema: GTA 6"}</div>
       ${c.layout_used ? `<div class="fmt">📐 Formato: ${{ cam: "câmera em cima + gameplay", full: "tela cheia (full cam)", game: "só gameplay" }[c.layout_used] || c.layout_used}${(c.layout || "auto") === "auto" ? " (automático)" : ""}</div>` : ""}
       ${c.audio_info ? `<div class="fmt">🔊 ${esc(c.audio_info)}</div>` : ""}
@@ -1032,6 +1043,8 @@ function openEditor(c){
   $("#edOn").checked = ED.on; $("#edText").value = ED.text;
   $("#edSubs").checked = ED.subs; $("#edZoom").checked = ED.zoom; edSubInfo();
   fillStyleSelects(c);
+  try { ED.blurs = c.blurs ? JSON.parse(c.blurs) : []; } catch { ED.blurs = []; }
+  ED.bsel = null; renderBz();
   v.addEventListener("loadedmetadata", () => {
     const d = v.duration; ED.dur = d; if (ED.te == null || ED.te > d) ED.te = d; if (ED.te0 == null || ED.te0 > d) ED.te0 = d;
     for (const id of ["edTs", "edTe"]){ $("#" + id).max = d.toFixed(1); }
@@ -1040,6 +1053,57 @@ function openEditor(c){
   $("#editModal").hidden = false;
   cancelAnimationFrame(ED.raf); ED.raf = requestAnimationFrame(edLoop);
 }
+/* 🔞 censura: quadrados borrados/pixelados/tarja preta, cada um no seu tempo */
+const BZ_KINDS = { blur: "Borrado", pixel: "Pixelado", preto: "Tarja preta" };
+const bzTmp = document.createElement("canvas");
+function drawCensors(ctx, W, H, rel){
+  (ED.blurs || []).forEach((b, i) => {
+    const x = b.x * W, y = b.y * H, w = b.w * W, h = b.h * H, on = rel >= (b.t0 ?? 0) && rel <= (b.t1 ?? 9999);
+    if (on){
+      if (b.kind === "preto"){ ctx.fillStyle = "#000"; ctx.fillRect(x, y, w, h); }
+      else if (b.kind === "pixel"){
+        const sw = Math.max(2, Math.round(w / 28 * (1080 / W) / 2)), sh = Math.max(2, Math.round(h / 28 * (1920 / H) / 2));
+        bzTmp.width = sw; bzTmp.height = sh; const t = bzTmp.getContext("2d");
+        t.drawImage(ctx.canvas, x, y, w, h, 0, 0, sw, sh);
+        ctx.save(); ctx.imageSmoothingEnabled = false; ctx.drawImage(bzTmp, 0, 0, sw, sh, x, y, w, h); ctx.restore();
+      } else {
+        ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip(); ctx.filter = "blur(9px)"; ctx.drawImage(ctx.canvas, 0, 0); ctx.restore();
+      }
+    }
+    ctx.save(); ctx.lineWidth = 2; ctx.strokeStyle = i === ED.bsel ? "#ff4f9a" : "rgba(255,255,255,.55)";
+    if (!on || i !== ED.bsel) ctx.setLineDash([6, 4]); ctx.strokeRect(x, y, w, h);
+    if (i === ED.bsel){ ctx.setLineDash([]); ctx.fillStyle = "#ff4f9a"; ctx.fillRect(x + w - 12, y + h - 12, 12, 12); }
+    ctx.restore();
+  });
+}
+function renderBz(){
+  const L = clipLen();
+  $("#bzList").innerHTML = (ED.blurs || []).map((b, i) => `<div class="bzitem ${i === ED.bsel ? "on" : ""}" data-bzi="${i}">
+      <b>Censura ${i + 1}</b>
+      <select data-bzkind="${i}">${Object.entries(BZ_KINDS).map(([k, v]) => `<option value="${k}" ${b.kind === k ? "selected" : ""}>${v}</option>`).join("")}</select>
+      <span>de <b>${fmtT(b.t0 ?? 0)}</b> até <b>${(b.t1 ?? 9999) >= L - 0.05 ? "o fim" : fmtT(b.t1)}</b></span>
+      <button class="small" data-bz="ini" data-i="${i}">Começar aqui</button><button class="small" data-bz="fim" data-i="${i}">Terminar aqui</button>
+      <button class="small" data-bz="tudo" data-i="${i}">O corte todo</button><button class="small danger" data-bz="del" data-i="${i}">🗑</button>
+    </div>`).join("") || `<span class="muted" style="font-size:12px">Nenhuma censura nesse corte.</span>`;
+}
+$("#bzAdd").onclick = () => {
+  const rel = Math.max(0, (ED.v?.currentTime || 0) - ED.ts);
+  ED.blurs.push({ x: 0.3, y: 0.38, w: 0.4, h: 0.16, t0: +rel.toFixed(2), t1: +Math.min(clipLen(), rel + 5).toFixed(2), kind: "blur" });
+  ED.bsel = ED.blurs.length - 1; renderBz();
+};
+$("#bzList").addEventListener("click", e => {
+  const b = e.target.closest("[data-bz]"), item = e.target.closest("[data-bzi]");
+  if (item && !b && e.target.tagName !== "SELECT"){ ED.bsel = +item.dataset.bzi; renderBz(); return; }
+  if (!b) return;
+  const i = +b.dataset.i, z = ED.blurs[i], rel = Math.max(0, (ED.v?.currentTime || 0) - ED.ts); ED.bsel = i;
+  if (b.dataset.bz === "ini") z.t0 = +Math.min(rel, (z.t1 ?? 9999) - 0.3).toFixed(2);
+  if (b.dataset.bz === "fim") z.t1 = +Math.max(rel, (z.t0 ?? 0) + 0.3).toFixed(2);
+  if (b.dataset.bz === "tudo"){ z.t0 = 0; z.t1 = 9999; }
+  if (b.dataset.bz === "del"){ ED.blurs.splice(i, 1); ED.bsel = null; }
+  renderBz();
+});
+$("#bzList").addEventListener("change", e => { const i = e.target.dataset.bzkind; if (i != null){ ED.blurs[+i].kind = e.target.value; ED.bsel = +i; renderBz(); } });
+
 /* estilos: "auto" = varia sozinho (a prévia mostra o que esse corte sorteou) */
 function styleOpts(kind, autoLabel){
   const S = (ST.styles || {})[kind] || {};
@@ -1086,7 +1150,7 @@ function edLoop(){
     const c = ED.c, lay = c.layout_used || (c.cam ? "cam" : "game"), cv = $("#edCanvas");
     // fora do tempo do texto ele aparece apagadinho, só pra dar pra arrastar
     ED.rects = drawVertical(cv.getContext("2d"), v, v.videoWidth, v.videoHeight, lay === "cam" ? c.cam : null, cv.width, cv.height,
-      ED.on ? ED.text : "", lay, { capY: ED.capY, capAlpha: inWin ? 1 : 0.35, sty: edSty(),
+      ED.on ? ED.text : "", lay, { capY: ED.capY, capAlpha: inWin ? 1 : 0.35, sty: edSty(), beforeCaption: (cx, W, H) => drawCensors(cx, W, H, rel),
         wm: ED.wm ? (ED.wm.lowerOf ? (lowerImg(ED.wm.lowerOf) ? { img: lowerImg(ED.wm.lowerOf), x: ED.wm.x, y: ED.wm.y, wf: ED.wm.lowerOf.lower_wf, auto: ED.wm.auto, set: p => Object.assign(ED.wm, p) } : null) : ED.wm) : null });
     $("#edTime").textContent = `${fmtT(v.currentTime)}  ·  no corte: ${fmtT(rel)} de ${fmtT(clipLen())}`;
     $("#edHead").style.left = `${(v.currentTime / ED.dur * 100).toFixed(2)}%`;
@@ -1133,6 +1197,17 @@ function edPt(e){ const cv = $("#edCanvas"), r = cv.getBoundingClientRect(); ret
 const inRect = (p, r) => r && p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
 $("#edCanvas").addEventListener("pointerdown", e => {
   const p = edPt(e), R = ED.rects || {}, cv = $("#edCanvas");
+  const W = cv.width, H = cv.height, bz = ED.blurs || [];
+  const sel = ED.bsel != null ? bz[ED.bsel] : null;
+  if (sel && Math.abs(p.x - (sel.x + sel.w) * W) < 18 && Math.abs(p.y - (sel.y + sel.h) * H) < 18){
+    ED.drag = { what: "bzsize", i: ED.bsel }; cv.setPointerCapture(e.pointerId); cv.classList.add("drag"); return;
+  }
+  const order = sel ? [ED.bsel, ...bz.map((_, i) => i).filter(i => i !== ED.bsel).reverse()] : bz.map((_, i) => i).reverse();
+  const hit = order.find(i => { const b = bz[i]; return p.x >= b.x * W && p.x <= (b.x + b.w) * W && p.y >= b.y * H && p.y <= (b.y + b.h) * H; });
+  if (hit != null){
+    ED.bsel = hit; renderBz(); ED.drag = { what: "bzmove", i: hit, dx: p.x / W - bz[hit].x, dy: p.y / H - bz[hit].y };
+    cv.setPointerCapture(e.pointerId); cv.classList.add("drag"); return;
+  }
   if (inRect(p, R.wmRect)) ED.drag = { what: "wm", dx: p.x - (R.wmRect.x + R.wmRect.w / 2), dy: p.y - (R.wmRect.y + R.wmRect.h / 2) };
   else if (ED.on && inRect(p, R.capRect)) ED.drag = { what: "cap", dy: p.y - (R.capRect.y + R.capRect.h / 2) };
   else return;
@@ -1140,6 +1215,12 @@ $("#edCanvas").addEventListener("pointerdown", e => {
 });
 $("#edCanvas").addEventListener("pointermove", e => {
   if (!ED.drag) return; const p = edPt(e), cv = $("#edCanvas");
+  if (ED.drag.what === "bzmove" || ED.drag.what === "bzsize"){
+    const b = ED.blurs[ED.drag.i], W = cv.width, H = cv.height;
+    if (ED.drag.what === "bzmove"){ b.x = Math.min(1 - b.w, Math.max(0, p.x / W - ED.drag.dx)); b.y = Math.min(1 - b.h, Math.max(0, p.y / H - ED.drag.dy)); }
+    else { b.w = Math.min(1 - b.x, Math.max(0.04, p.x / W - b.x)); b.h = Math.min(1 - b.y, Math.max(0.03, p.y / H - b.y)); }
+    return;
+  }
   if (ED.drag.what === "cap") ED.capY = Math.min(0.97, Math.max(0.03, (p.y - ED.drag.dy) / cv.height));
   else { ED.wm.auto = false; ED.wm.x = Math.min(0.97, Math.max(0.03, (p.x - ED.drag.dx) / cv.width)); ED.wm.y = Math.min(0.98, Math.max(0.02, (p.y - ED.drag.dy) / cv.height)); }
 });
@@ -1148,12 +1229,13 @@ async function saveEditor(reset){
   const c = ED.c; if (!c) return;
   const body = reset
     ? { trim_start: null, trim_end: null, cap_start: null, cap_end: null, cap_y: null, wm_x: null, wm_y: null, subs_on: null, zoom_on: null, sub_y: null,
-        cap_style: null, cap_font: null, wm_style: null }
+        cap_style: null, cap_font: null, wm_style: null, blurs: null }
     : { ...(Math.abs(ED.ts - ED.ts0) < 0.05 && Math.abs(ED.te - ED.te0) < 0.05
           ? { trim_start: null, trim_end: null }          // não mexeu: continua seguindo o estilo do corte
           : { trim_start: +ED.ts.toFixed(2), trim_end: +ED.te.toFixed(2) }),
         subs_on: ED.subs ? true : null, zoom_on: ED.zoom === ED.dynDef ? null : ED.zoom, sub_y: ED.subY,
         cap_style: $("#edCapStyle").value, cap_font: $("#edCapFont").value, wm_style: $("#edWmStyle").value,
+        blurs: (ED.blurs || []).map(b => ({ x: +b.x.toFixed(4), y: +b.y.toFixed(4), w: +b.w.toFixed(4), h: +b.h.toFixed(4), t0: b.t0 ?? 0, t1: (b.t1 ?? 9999) >= clipLen() - 0.05 ? 9999 : b.t1, kind: b.kind || "blur" })),
         cap_start: +ED.ca.toFixed(2), cap_end: ED.cb >= 9000 ? 9999 : +ED.cb.toFixed(2),
         cap_y: ED.capY, wm_x: ED.wm && !ED.wm.auto ? +ED.wm.x.toFixed(3) : null, wm_y: ED.wm && !ED.wm.auto ? +ED.wm.y.toFixed(3) : null,
         overlay: ED.text, overlay_on: ED.on };

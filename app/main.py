@@ -777,6 +777,7 @@ class EditIn(BaseModel):
     subs_on: bool | None = None
     zoom_on: bool | None = None
     sub_y: float | None = None
+    blurs: list | None = None         # censuras [{x, y, w, h, t0, t1, kind}]
     cap_style: str | None = None      # "auto" ou vazio = varia sozinho
     cap_font: str | None = None
     wm_style: str | None = None
@@ -794,6 +795,7 @@ def edit_clip_video(clip_id: int, body: EditIn):
     for k in ("cap_style", "cap_font", "wm_style"):
         if data.get(k) == "auto":
             data[k] = None
+    data["blurs"] = json.dumps(data["blurs"][:20]) if data.get("blurs") else None
     data.update({"rendering": 1, "warn": None})
     db.update("clips", clip_id, data)
     queue_render(clip_id)
