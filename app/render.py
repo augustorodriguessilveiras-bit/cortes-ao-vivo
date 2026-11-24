@@ -731,6 +731,22 @@ def detect_layout(h_path, cam):
     return default
 
 
+def game_crop(vw, vh, tw, th, default_cx, game):
+    """
+    Recorte da parte do jogo/vídeo: tamanho certo pro espaço (tw x th), com zoom e posição escolhidos no editor.
+    game: {x, y (centro, 0 a 1 do vídeo original), zoom (1 = normal)} · sem game.x/y: o automático (default_cx, meio).
+    """
+    _, _, bw, bh = cover_crop(0, 0, vw, vh, tw, th)
+    z = max(1.0, min(4.0, float((game or {}).get("zoom") or 1)))
+    w, h = bw / z, bh / z
+    gx, gy = (game or {}).get("x"), (game or {}).get("y")
+    cx = float(gx) * vw if gx is not None else default_cx
+    cy = float(gy) * vh if gy is not None else vh / 2
+    x = min(max(0.0, cx - w / 2), vw - w)
+    y = min(max(0.0, cy - h / 2), vh - h)
+    return [x, y, w, h]
+
+
 def censor_chain(src, blurs, dur):
     """
     Censura (borrado, pixelado ou tarja preta) em partes do vídeo vertical, cada uma no seu tempo.
@@ -769,15 +785,14 @@ def censor_chain(src, blurs, dur):
 
 def vertical_filter(vw, vh, layout, cam, focus_x, cap_h, cap_secs, dur=0, wm_idx=None, wm_y=0,
                     cap_win=None, cap_yc=None, wm_xc=None, wm_pre="", zooms=None, fps="30", sub_idx=None, sub_y=None,
-                    blurs=None):
+                    blurs=None, game=None):
     """Monta o filtro do ffmpeg pro formato escolhido, com a faixa do título se tiver."""
     zp = lambda w, h: (f",zoompan=z='{zoom_expr(zooms)}':x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':d=1:s={w}x{h}:fps={fps}"
                        if zooms else "")
     if layout == "full":
         # tela cheia: recorte vertical da imagem inteira, centrado no streamer
-        cw = min(even(vh * W / H), even(vw))
-        cx = min(max(0, focus_x * vw - cw / 2), vw - cw)
-        f = f"[0:v]crop={cw}:{even(vh)}:{int(cx)}:0,scale={W}:{H},setsar=1{zp(W, H)}[base]"
+        r = game_crop(vw, vh, W, H, focus_x * vw, game)       # zoom/posição escolhidos no editor
+        f = f"[0:v]crop={even(r[2])}:{even(r[3])}:{int(r[0])}:{int(r[1])},scale={W}:{H},setsar=1{zp(W, H)}[base]"
         y = int(H * 0.70) - cap_h // 2
     elif layout == "cam" and cam:
         cx, cy, cw, ch = cam["x"] * vw, cam["y"] * vh, cam["w"] * vw, cam["h"] * vh
@@ -792,8 +807,18 @@ def vertical_filter(vw, vh, layout, cam, focus_x, cap_h, cap_secs, dur=0, wm_idx
             else:
                 g[0] = min(vw - g[2], max(g[0], cx + cw))
         crop = lambda r: f"crop={even(r[2])}:{even(r[3])}:{int(r[0])}:{int(r[1])}"
+        if (game or {}).get("fit"):
+            # "mostrar a tela inteira": a imagem toda encaixada embaixo, com fundo borrado nas sobras
+            fw = W if vw / vh >= W / bh else even(bh * vw / vh)
+            fh = even(fw * vh / vw)
+            bot = (f"[b]split=2[b1][b2];[b1]scale={W // 4}:{bh // 4}:force_original_aspect_ratio=increase,crop={W // 4}:{bh // 4},"
+                   f"boxblur=6:3,eq=brightness=-0.1,scale={W}:{bh}:flags=bilinear[bbg];[b2]scale={even(fw)}:{fh},setsar=1[bfg];"
+                   f"[bbg][bfg]overlay=({W}-w)/2:({bh}-h)/2,setsar=1[bot]")
+        else:
+            g = game_crop(vw, vh, W, bh, g[0] + g[2] / 2, game)   # zoom/posição escolhidos no editor
+            bot = f"[b]{crop(g)},scale={W}:{bh},setsar=1[bot]"
         f = (f"[0:v]split=2[a][b];[a]{crop(a)},scale={W}:{th},setsar=1{zp(W, th)}[top];"
-             f"[b]{crop(g)},scale={W}:{bh},setsar=1[bot];"
+             f"{bot};"
              f"[top][bot]vstack=2,drawbox=x=0:y={th - 3}:w={W}:h=6:color=black:t=fill[base]")
         y = th - cap_h // 2
     else:
@@ -854,7 +879,7 @@ def _above_caption(vw, vh, layout, cam, cap_h, cap_y, item_h, gap=8):
 
 def make_vertical(h_path, out, thumb, cam=None, caption="", cap_secs=10, layout="auto", watermark=None,
                   trim=None, cap_win=None, cap_y=None, wm_pos=None, audio_mode="auto", subs=None, sub_y=None, zooms=None,
-                  styles=None, blurs=None):
+                  styles=None, blurs=None, game=None):
     """
     Monta o vertical. layout: 'auto' (decide sozinho), 'cam', 'full' ou 'game'. Retorna o formato usado.
     trim: (início, fim) em segundos dentro do corte · cap_win: (aparece, some) do texto, contando do início do corte
@@ -922,7 +947,7 @@ def make_vertical(h_path, out, thumb, cam=None, caption="", cap_secs=10, layout=
     flt = vertical_filter(vw, vh, layout, cam, focus_x, cap_h, cap_secs, dur, wm_idx, wm_y,
                           cap_win=cap_win, cap_yc=(cap_y * H if cap_y is not None else None), wm_xc=wm_xc, wm_pre=wm_pre,
                           zooms=[z for z in (zooms or []) if z < dur - 1], fps=fps_of(h_path) if zooms else "30",
-                          sub_idx=sub_idx, sub_y=sub_yc, blurs=blurs)
+                          sub_idx=sub_idx, sub_y=sub_yc, blurs=blurs, game=game)
     afx, ainfo = audio_fix(h_path, ts, dur, audio_mode)
     afx += [f"afade=t=out:st={max(0.0, dur - 0.6):.2f}:d=0.6"] if dur > 3 else []
     afade = ["-af", ",".join(afx)] if afx else []

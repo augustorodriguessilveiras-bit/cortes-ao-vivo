@@ -177,6 +177,8 @@ Só os seus aparelhos conseguem abrir.
   Os cortes saem no estilo padrão (faixa branca, marca d'água escura); você muda as cores em cada corte no
   ✂ Editar corte. Em Ajustes dá pra mudar o padrão ou escolher "Variar sozinho".
   Fontes: Anton, Archivo Black, Bangers, Bebas Neue (licença OFL) e Luckiest Guy (licença Apache), em app/static/fonts.
+- **🎮 Parte de baixo (jogo/vídeo):** no ✂ Editar corte, arraste a imagem de baixo na prévia pra escolher o pedaço que
+  aparece, use o Zoom pra aproximar, ou marque "Mostrar a tela inteira" (sem cortar, com fundo borrado).
 - **🔞 Censura:** no ✂ Editar corte, "+ Censurar uma parte" põe um quadrado borrado, pixelado ou tarja preta onde você
   arrastar, no tempo que escolher (vários por corte). Fica por baixo do título e da marca d'água. Vale no vertical.
 - **📤 Enviar um corte seu:** manda um trecho que você cortou e ele sai no mesmo formato dos automáticos.

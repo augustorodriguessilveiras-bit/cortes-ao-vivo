@@ -464,7 +464,7 @@ details.meta[open] summary{margin-bottom:6px}
     <div class="edgrid">
       <div class="edprev">
         <canvas id="edCanvas" width="540" height="960" aria-label="Prévia do corte vertical"></canvas>
-        <div class="muted" style="text-align:center;max-width:300px">🖐 Arraste a <b style="color:var(--text)">faixa do texto</b> e a <b style="color:var(--text)">marca d'água</b> pra mudar de lugar</div>
+        <div class="muted" style="text-align:center;max-width:300px">🖐 Arraste a <b style="color:var(--text)">faixa do texto</b>, a <b style="color:var(--text)">marca d'água</b> e a <b style="color:var(--text)">imagem de baixo</b> pra mudar de lugar</div>
       </div>
       <div class="edctl">
         <div class="edrow"><button class="small primary" id="edPlay">▶ Tocar</button><span id="edTime">0:00</span></div>
@@ -490,6 +490,12 @@ details.meta[open] summary{margin-bottom:6px}
         <div class="edrow"><label>Some em <input type="range" id="edCb" step="0.1"></label><output id="edCbO"></output></div>
         <div class="edrow"><button class="small" id="edCaNow">Aparecer a partir daqui</button><button class="small" id="edCbNow">Sumir aqui</button><button class="small" id="edCapAll">O corte todo</button></div>
         <div class="edrow">Lugar do texto: <button class="small" data-capy="0.12">Em cima</button><button class="small" data-capy="def">Padrão</button><button class="small" data-capy="0.5">Meio</button><button class="small" data-capy="0.86">Embaixo</button></div>
+
+        <h3>🎮 Parte de baixo (jogo / vídeo)</h3>
+        <div class="muted" style="font-size:12px">Arraste a imagem de baixo na prévia pra escolher o pedaço que aparece.</div>
+        <div class="edrow"><label>Zoom <input type="range" id="gmZoom" min="1" max="3" step="0.05"></label><output id="gmZoomO"></output></div>
+        <div class="edrow"><label class="switch"><input type="checkbox" id="gmFit"> Mostrar a tela inteira (sem cortar, com fundo borrado)</label>
+          <button class="small" id="gmAuto">Voltar ao automático</button></div>
 
         <h3>🔞 Censura (borrar uma parte)</h3>
         <div class="edrow"><button class="small primary" id="bzAdd">+ Censurar uma parte</button>
@@ -532,6 +538,12 @@ const post = (p, body) => api(p, { method: "POST", body: JSON.stringify(body ?? 
 let ST = { channels: [], vods: [], settings: {} }, clips = [], filt = { status: "pendente", channel: "" };
 
 /* ------------------------------------------------------------ desenho do vertical (só pra prévia; o vídeo de verdade é feito pelo ffmpeg) */
+// parte de baixo (jogo/vídeo): mesmo cálculo do vídeo final (zoom e posição escolhidos no editor)
+function gameCrop(vw, vh, tw, th, defCx, G){
+  const b = coverCrop(0, 0, vw, vh, tw, th), z = Math.max(1, Math.min(4, +(G && G.zoom) || 1)), w = b[2] / z, h = b[3] / z;
+  const cx = G && G.x != null ? G.x * vw : defCx, cy = G && G.y != null ? G.y * vh : vh / 2;
+  return [Math.min(Math.max(0, cx - w / 2), vw - w), Math.min(Math.max(0, cy - h / 2), vh - h), w, h];
+}
 function coverCrop(sx, sy, sw, sh, dw, dh){ const ar = dw / dh; let w = sw, h = sw / ar; if (h > sh){ h = sh; w = sh * ar; } return [sx + (sw - w) / 2, sy + (sh - h) / 2, w, h]; }
 const FONT_CSS = { classica: '"Arial Black","Segoe UI Black",Arial,sans-serif', anton: '"CortesAnton",Impact,sans-serif',
   archivo: '"CortesArchivo","Arial Black",sans-serif', bangers: '"CortesBangers",Impact,sans-serif',
@@ -586,10 +598,12 @@ function drawWatermark(ctx, text, W, H, xc, yc, wmKey){
 function drawVertical(ctx, img, vw, vh, cam, W, H, caption, layout, opts = {}){
   ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
   let yDef;
+  const G = opts.game || {};
+  let gameRect = null;
   if (layout === "full"){
-    const cw = Math.min(vh * W / H, vw), fx = cam ? cam.x + cam.w / 2 : 0.5;
-    const cx = Math.min(Math.max(0, fx * vw - cw / 2), vw - cw);
-    ctx.drawImage(img, cx, 0, cw, vh, 0, 0, W, H);
+    const fx = cam ? cam.x + cam.w / 2 : 0.5, r = gameCrop(vw, vh, W, H, fx * vw, G);
+    ctx.drawImage(img, ...r, 0, 0, W, H);
+    gameRect = { src: r, top: 0, h: H };
     yDef = H * 0.70;
   } else {
     if (layout === "game") cam = null;
@@ -599,7 +613,16 @@ function drawVertical(ctx, img, vw, vh, cam, W, H, caption, layout, opts = {}){
       const g = coverCrop(0, 0, vw, vh, W, H - TH), cx = cam.x * vw, cw = cam.w * vw;
       if (cam.w < 0.5 && g[0] < cx + cw && g[0] + g[2] > cx)
         g[0] = cx + cw / 2 >= vw / 2 ? Math.max(0, Math.min(g[0], cx - g[2])) : Math.min(vw - g[2], Math.max(g[0], cx + cw));
-      ctx.drawImage(img, ...g, 0, TH, W, H - TH);
+      if (G.fit){        // mostrar a tela inteira: imagem toda encaixada, fundo borrado
+        const bh = H - TH, fw = vw / vh >= W / bh ? W : bh * vw / vh, fh = fw * vh / vw;
+        ctx.save(); ctx.beginPath(); ctx.rect(0, TH, W, bh); ctx.clip(); ctx.filter = "blur(10px) brightness(0.8)";
+        ctx.drawImage(img, ...coverCrop(0, 0, vw, vh, W, bh), 0, TH, W, bh); ctx.restore();
+        ctx.drawImage(img, 0, 0, vw, vh, (W - fw) / 2, TH + (bh - fh) / 2, fw, fh);
+      } else {
+        const r = gameCrop(vw, vh, W, H - TH, g[0] + g[2] / 2, G);
+        ctx.drawImage(img, ...r, 0, TH, W, H - TH);
+        gameRect = { src: r, top: TH, h: H - TH };
+      }
       ctx.fillStyle = "#000"; ctx.fillRect(0, TH - 1, W, 2);
       yDef = TH;
     } else {
@@ -622,7 +645,7 @@ function drawVertical(ctx, img, vw, vh, cam, W, H, caption, layout, opts = {}){
     const x = Math.max(0, Math.min(W - w, opts.wm.x * W - w / 2)), y = Math.max(0, Math.min(H - h, opts.wm.y * H - h / 2));
     ctx.drawImage(im, x, y, w, h); wmRect = { x, y, w, h };
   } else if (opts.wm && opts.wm.text) wmRect = drawWatermark(ctx, opts.wm.text, W, H, (opts.wm.x ?? 0.5) * W, (opts.wm.y ?? 0.8) * H, opts.sty && opts.sty.wm);
-  return { capRect, wmRect, capYDefault: yDef / H };
+  return { capRect, wmRect, capYDefault: yDef / H, gameRect };
 }
 
 /* ------------------------------------------------------------ lives e VODs */
@@ -1011,7 +1034,7 @@ function drawPreview(id){
   if (!img){ ctx.fillStyle = "#000"; ctx.fillRect(0, 0, cv.width, cv.height); return; }
   const lay = c.layout_used || (c.cam ? "cam" : "game");
   drawVertical(ctx, img, img.width, img.height, lay === "cam" ? c.cam : null, cv.width, cv.height, st.want, lay,
-    { capY: c.cap_y, wm: markOpts(c, c.wm_x, c.wm_y), sty: c.sty });
+    { capY: c.cap_y, wm: markOpts(c, c.wm_x, c.wm_y), sty: c.sty, game: { x: c.game_x, y: c.game_y, zoom: c.game_zoom, fit: !!c.game_fit } });
 }
 const frameObs = new IntersectionObserver(entries => {
   for (const e of entries){
@@ -1046,6 +1069,7 @@ function openEditor(c){
   $("#edOn").checked = ED.on; $("#edText").value = ED.text;
   $("#edSubs").checked = ED.subs; $("#edZoom").checked = ED.zoom; edSubInfo();
   fillStyleSelects(c);
+  ED.game = { x: c.game_x ?? null, y: c.game_y ?? null, zoom: c.game_zoom ?? 1, fit: !!c.game_fit }; syncGame();
   try { ED.blurs = c.blurs ? JSON.parse(c.blurs) : []; } catch { ED.blurs = []; }
   ED.bsel = null; renderBz();
   v.addEventListener("loadedmetadata", () => {
@@ -1056,6 +1080,15 @@ function openEditor(c){
   $("#editModal").hidden = false;
   cancelAnimationFrame(ED.raf); ED.raf = requestAnimationFrame(edLoop);
 }
+/* 🎮 parte de baixo: zoom, posição e tela inteira */
+function syncGame(){
+  const g = ED.game || {}; $("#gmZoom").value = g.zoom || 1; $("#gmZoomO").textContent = `${(+(g.zoom || 1)).toFixed(2)}x`;
+  $("#gmFit").checked = !!g.fit; $("#gmZoom").disabled = !!g.fit;
+}
+$("#gmZoom").oninput = e => { ED.game.zoom = +e.target.value; syncGame(); };
+$("#gmFit").onchange = e => { ED.game.fit = e.target.checked; syncGame(); };
+$("#gmAuto").onclick = () => { ED.game = { x: null, y: null, zoom: 1, fit: false }; syncGame(); };
+
 /* 🔞 censura: quadrados borrados/pixelados/tarja preta, cada um no seu tempo */
 const BZ_KINDS = { blur: "Borrado", pixel: "Pixelado", preto: "Tarja preta" };
 const bzTmp = document.createElement("canvas");
@@ -1153,7 +1186,7 @@ function edLoop(){
     const c = ED.c, lay = c.layout_used || (c.cam ? "cam" : "game"), cv = $("#edCanvas");
     // fora do tempo do texto ele aparece apagadinho, só pra dar pra arrastar
     ED.rects = drawVertical(cv.getContext("2d"), v, v.videoWidth, v.videoHeight, lay === "cam" ? c.cam : null, cv.width, cv.height,
-      ED.on ? ED.text : "", lay, { capY: ED.capY, capAlpha: inWin ? 1 : 0.35, sty: edSty(), beforeCaption: (cx, W, H) => drawCensors(cx, W, H, rel),
+      ED.on ? ED.text : "", lay, { capY: ED.capY, capAlpha: inWin ? 1 : 0.35, sty: edSty(), game: ED.game, beforeCaption: (cx, W, H) => drawCensors(cx, W, H, rel),
         wm: ED.wm ? (ED.wm.lowerOf ? (lowerImg(ED.wm.lowerOf) ? { img: lowerImg(ED.wm.lowerOf), x: ED.wm.x, y: ED.wm.y, wf: ED.wm.lowerOf.lower_wf, auto: ED.wm.auto, set: p => Object.assign(ED.wm, p) } : null) : ED.wm) : null });
     $("#edTime").textContent = `${fmtT(v.currentTime)}  ·  no corte: ${fmtT(rel)} de ${fmtT(clipLen())}`;
     $("#edHead").style.left = `${(v.currentTime / ED.dur * 100).toFixed(2)}%`;
@@ -1213,11 +1246,21 @@ $("#edCanvas").addEventListener("pointerdown", e => {
   }
   if (inRect(p, R.wmRect)) ED.drag = { what: "wm", dx: p.x - (R.wmRect.x + R.wmRect.w / 2), dy: p.y - (R.wmRect.y + R.wmRect.h / 2) };
   else if (ED.on && inRect(p, R.capRect)) ED.drag = { what: "cap", dy: p.y - (R.capRect.y + R.capRect.h / 2) };
+  else if (R.gameRect && !ED.game.fit && p.y >= R.gameRect.top && p.y <= R.gameRect.top + R.gameRect.h){
+    const r = R.gameRect.src, v = ED.v;
+    ED.drag = { what: "game", px: p.x, py: p.y, cx: r[0] + r[2] / 2, cy: r[1] + r[3] / 2, sx: r[2] / cv.width, sy: r[3] / R.gameRect.h, vw: v.videoWidth, vh: v.videoHeight };
+  }
   else return;
   cv.setPointerCapture(e.pointerId); cv.classList.add("drag");
 });
 $("#edCanvas").addEventListener("pointermove", e => {
   if (!ED.drag) return; const p = edPt(e), cv = $("#edCanvas");
+  if (ED.drag.what === "game"){
+    const d = ED.drag;
+    ED.game.x = Math.min(1, Math.max(0, (d.cx - (p.x - d.px) * d.sx) / d.vw));
+    ED.game.y = Math.min(1, Math.max(0, (d.cy - (p.y - d.py) * d.sy) / d.vh));
+    return;
+  }
   if (ED.drag.what === "bzmove" || ED.drag.what === "bzsize"){
     const b = ED.blurs[ED.drag.i], W = cv.width, H = cv.height;
     if (ED.drag.what === "bzmove"){ b.x = Math.min(1 - b.w, Math.max(0, p.x / W - ED.drag.dx)); b.y = Math.min(1 - b.h, Math.max(0, p.y / H - ED.drag.dy)); }
@@ -1232,12 +1275,14 @@ async function saveEditor(reset){
   const c = ED.c; if (!c) return;
   const body = reset
     ? { trim_start: null, trim_end: null, cap_start: null, cap_end: null, cap_y: null, wm_x: null, wm_y: null, subs_on: null, zoom_on: null, sub_y: null,
-        cap_style: null, cap_font: null, wm_style: null, blurs: null }
+        cap_style: null, cap_font: null, wm_style: null, blurs: null, game_x: null, game_y: null, game_zoom: null, game_fit: null }
     : { ...(Math.abs(ED.ts - ED.ts0) < 0.05 && Math.abs(ED.te - ED.te0) < 0.05
           ? { trim_start: null, trim_end: null }          // não mexeu: continua seguindo o estilo do corte
           : { trim_start: +ED.ts.toFixed(2), trim_end: +ED.te.toFixed(2) }),
         subs_on: ED.subs ? true : null, zoom_on: ED.zoom === ED.dynDef ? null : ED.zoom, sub_y: ED.subY,
         cap_style: $("#edCapStyle").value, cap_font: $("#edCapFont").value, wm_style: $("#edWmStyle").value,
+        game_x: ED.game.x != null ? +ED.game.x.toFixed(4) : null, game_y: ED.game.y != null ? +ED.game.y.toFixed(4) : null,
+        game_zoom: ED.game.zoom && ED.game.zoom > 1.001 ? +(+ED.game.zoom).toFixed(3) : null, game_fit: ED.game.fit ? true : null,
         blurs: (ED.blurs || []).map(b => ({ x: +b.x.toFixed(4), y: +b.y.toFixed(4), w: +b.w.toFixed(4), h: +b.h.toFixed(4), t0: b.t0 ?? 0, t1: (b.t1 ?? 9999) >= clipLen() - 0.05 ? 9999 : b.t1, kind: b.kind || "blur" })),
         cap_start: +ED.ca.toFixed(2), cap_end: ED.cb >= 9000 ? 9999 : +ED.cb.toFixed(2),
         cap_y: ED.capY, wm_x: ED.wm && !ED.wm.auto ? +ED.wm.x.toFixed(3) : null, wm_y: ED.wm && !ED.wm.auto ? +ED.wm.y.toFixed(3) : null,

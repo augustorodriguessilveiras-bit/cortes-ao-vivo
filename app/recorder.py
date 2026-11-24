@@ -200,7 +200,9 @@ def render_vertical_for(clip_id):
                                     audio_mode=settings.get("audio_mode"),
                                     subs=words if subs_on else None, sub_y=c.get("sub_y"), zooms=zooms,
                                     styles=render.pick_styles(clip_id, c.get("cap_style"), c.get("cap_font"), c.get("wm_style")),
-                                    blurs=json.loads(c["blurs"]) if c.get("blurs") else None)
+                                    blurs=json.loads(c["blurs"]) if c.get("blurs") else None,
+                                    game={"x": c.get("game_x"), "y": c.get("game_y"), "zoom": c.get("game_zoom"),
+                                          "fit": bool(c.get("game_fit"))})
         tmp.replace(v)
         # o horizontal pra baixar agora só é feito quando você clica em "⬇ Horizontal" (metade do trabalho a cada edição)
         if c.get("file_hw"):

@@ -778,6 +778,10 @@ class EditIn(BaseModel):
     zoom_on: bool | None = None
     sub_y: float | None = None
     blurs: list | None = None         # censuras [{x, y, w, h, t0, t1, kind}]
+    game_x: float | None = None       # parte de baixo (jogo/vídeo): centro escolhido, 0 a 1 (vazio = automático)
+    game_y: float | None = None
+    game_zoom: float | None = None
+    game_fit: bool | None = None      # mostrar a tela inteira (com fundo borrado)
     cap_style: str | None = None      # "auto" ou vazio = varia sozinho
     cap_font: str | None = None
     wm_style: str | None = None
