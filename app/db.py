@@ -67,7 +67,8 @@ with _lock:
                   "sub_y": "REAL", "posted_on": "TEXT", "views": "TEXT", "dup_of": "INTEGER", "style_used": "TEXT",
                   "cap_style": "TEXT", "cap_font": "TEXT", "wm_style": "TEXT",
                   "blurs": "TEXT",
-                  "game_x": "REAL", "game_y": "REAL", "game_zoom": "REAL", "game_fit": "INTEGER"},   # parte de baixo                                                   # censuras (borrado/pixelado/tarja)     # estilo escolhido (vazio = automático)
+                  "game_x": "REAL", "game_y": "REAL", "game_zoom": "REAL", "game_fit": "INTEGER",
+                  "music_file": "TEXT", "music_vol": "REAL", "cap_size": "REAL"},   # música de fundo · tamanho da letra   # parte de baixo                                                   # censuras (borrado/pixelado/tarja)     # estilo escolhido (vazio = automático)
     }
     for table, cols in NEW.items():
         have = {r[1] for r in _conn.execute(f"PRAGMA table_info({table})")}

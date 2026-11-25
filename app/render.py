@@ -156,6 +156,14 @@ def frame_jpg(src, out, t=None, sseof=None, width=None):
     return False
 
 
+def has_audio(path):
+    try:
+        r = run(["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=index", "-of", "csv=p=0", str(path)])
+        return bool(r.stdout.strip())
+    except Exception:
+        return False
+
+
 def even(n):
     return max(2, int(round(n / 2)) * 2)
 
@@ -240,28 +248,33 @@ def clean_text(text):
     return re.sub(r"\s+", " ", _KEEP.sub("", _EMOJI.sub("", text or ""))).strip()
 
 
-def caption_png(text, out, style="branco", font_key="classica"):
-    """Faixa do título (1080 de largura). Retorna a altura."""
-    text = clean_text(text).upper()
-    if not text:
+def caption_png(text, out, style="branco", font_key="classica", scale=1.0):
+    """Faixa do título (1080 de largura). Respeita as quebras de linha (Enter). scale = tamanho da letra. Retorna a altura."""
+    paras = [clean_text(p).upper() for p in (text or "").replace("\r", "").split("\n")]
+    paras = [p for p in paras if p]
+    if not paras:
         return 0
     st = CAP_STYLES.get(style, CAP_STYLES["branco"])
     max_w = W * 0.92
-    size = int(W * (0.066 if font_key in ("anton", "bebas") else 0.056))
+    scale = max(0.5, min(2.0, float(scale or 1.0)))
+    size = int(W * (0.066 if font_key in ("anton", "bebas") else 0.056) * scale)
+    max_lines = max(3, len(paras)) + (1 if scale > 1.15 else 0)
     dummy = ImageDraw.Draw(Image.new("RGB", (10, 10)))
     while True:
         font = _font_named(font_key, size)
-        lines, cur = [], ""
-        for word in text.split(" "):
-            t = f"{cur} {word}".strip()
-            if dummy.textlength(t, font=font) <= max_w or not cur:
-                cur = t
-            else:
+        lines = []
+        for para in paras:                      # cada linha que você quebrou com Enter continua separada
+            cur = ""
+            for word in para.split(" "):
+                t = f"{cur} {word}".strip()
+                if dummy.textlength(t, font=font) <= max_w or not cur:
+                    cur = t
+                else:
+                    lines.append(cur)
+                    cur = word
+            if cur:
                 lines.append(cur)
-                cur = word
-        if cur:
-            lines.append(cur)
-        if (len(lines) <= 3 and all(dummy.textlength(l, font=font) <= max_w for l in lines)) or size <= 32:
+        if (len(lines) <= max_lines and all(dummy.textlength(l, font=font) <= max_w for l in lines)) or size <= 28:
             break
         size -= 2
     lh, pad = int(size * 1.18), int(size * 0.55)
@@ -879,7 +892,7 @@ def _above_caption(vw, vh, layout, cam, cap_h, cap_y, item_h, gap=8):
 
 def make_vertical(h_path, out, thumb, cam=None, caption="", cap_secs=10, layout="auto", watermark=None,
                   trim=None, cap_win=None, cap_y=None, wm_pos=None, audio_mode="auto", subs=None, sub_y=None, zooms=None,
-                  styles=None, blurs=None, game=None):
+                  styles=None, blurs=None, game=None, cap_scale=1.0, music=None):
     """
     Monta o vertical. layout: 'auto' (decide sozinho), 'cam', 'full' ou 'game'. Retorna o formato usado.
     trim: (início, fim) em segundos dentro do corte · cap_win: (aparece, some) do texto, contando do início do corte
@@ -911,7 +924,7 @@ def make_vertical(h_path, out, thumb, cam=None, caption="", cap_secs=10, layout=
                 layout = "game"
     cap_png = Path(out).with_suffix(".faixa.png")
     cap_style, cap_font, wm_style = styles or ("branco", "classica", "escuro")
-    cap_h = caption_png(caption, cap_png, cap_style, cap_font) if caption else 0
+    cap_h = caption_png(caption, cap_png, cap_style, cap_font, cap_scale) if caption else 0
     cap_secs = 1e9 if cap_secs > 40 else cap_secs
     if cap_win:
         a, b = max(0.0, cap_win[0] or 0.0), cap_win[1] if cap_win[1] is not None else 1e9
@@ -955,9 +968,24 @@ def make_vertical(h_path, out, thumb, cam=None, caption="", cap_secs=10, layout=
     if cap_h:
         inputs += ["-loop", "1", "-t", f"{dur:.2f}", "-i", str(cap_png)]
     inputs += wm_args + sub_args
+    amap = ["-map", "0:a:0?"]
+    if music and Path(music[0]).exists():
+        # música de fundo: repete até o fim do corte, no volume escolhido, e some devagar no final
+        m_idx = sum(1 for a in inputs if a == "-i")
+        inputs += ["-stream_loop", "-1", "-i", str(music[0])]
+        vol = max(0.0, min(2.0, float(music[1] if music[1] is not None else 0.25)))
+        mu = (f"[{m_idx}:a]aresample=48000,aformat=channel_layouts=stereo,volume={vol:.3f},atrim=0:{dur:.2f},asetpts=N/SR/TB"
+              f",afade=t=out:st={max(0.0, dur - 1.5):.2f}:d=1.5[mus]")
+        if has_audio(h_path):
+            orig = ",".join(afx) if afx else "anull"
+            flt += (f";[0:a]{orig},aresample=48000,aformat=channel_layouts=stereo[aorig];{mu};"
+                    f"[aorig][mus]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]")
+        else:
+            flt += f";{mu};[mus]anull[aout]"
+        amap, afade = ["-map", "[aout]"], []
     try:
         run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", *inputs, "-filter_complex", flt,
-             "-map", "[v]", "-map", "0:a:0?", *venc(), *afade, *AENC, "-movflags", "+faststart", str(out)],
+             "-map", "[v]", *amap, *venc(), *afade, *AENC, "-movflags", "+faststart", str(out)],
             timeout=1800)
         thumb_t = ((cap_win[0] if cap_win else 0) + 1.0) if cap_h else dur * 0.6
         frame_jpg(out, thumb, t=min(thumb_t, max(0.5, dur - 0.5)), width=360)

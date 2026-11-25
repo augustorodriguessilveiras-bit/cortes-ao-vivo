@@ -85,7 +85,7 @@ h2{font-size:13px;text-transform:uppercase;letter-spacing:1.2px;color:var(--mute
 .add{display:flex;gap:8px;flex-wrap:wrap}
 input[type=text],textarea{background:var(--panel);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:11px 14px;font:inherit}
 .add input{flex:1;min-width:220px;font-size:15px}
-button,a.btn{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:9px 13px;font:inherit;font-size:14px;cursor:pointer;white-space:nowrap;text-decoration:none;display:inline-block}
+button,a.btn,label.btn{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:9px 13px;font:inherit;font-size:14px;cursor:pointer;white-space:nowrap;text-decoration:none;display:inline-block}
 button:hover,a.btn:hover{border-color:var(--accent)}
 button:focus-visible,input:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid var(--accent2);outline-offset:2px}
 button.primary{background:linear-gradient(90deg,var(--accent),#ff7a6b);border:0;font-weight:600;color:#fff}
@@ -504,6 +504,14 @@ details.meta[open] summary{margin-bottom:6px}
 
         <h3>🎨 Cores e letra do título</h3>
         <div class="stysel"><select id="edCapStyle" aria-label="Cores do título"></select><select id="edCapFont" aria-label="Letra do título"></select></div>
+        <div class="edrow">🔠 Tamanho da letra: <input type="range" id="edCapSize" min="0.6" max="1.8" step="0.05" value="1" style="flex:1;min-width:120px"><span id="edCapSizeV">100%</span><button class="small" id="edCapSizeR">Normal</button></div>
+        <div class="muted" style="font-size:12px">Dica: dê Enter (ou Shift+Enter) no texto pra jogar o resto pra linha de baixo.</div>
+
+        <h3>🎵 Música de fundo</h3>
+        <div class="edrow"><label class="small btn" style="cursor:pointer"><input type="file" id="edMusicFile" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg,.opus,.flac" hidden>📁 Escolher música</label>
+          <span id="edMusicName" class="muted" style="font-size:12px">Sem música</span><button class="small danger" id="edMusicDel" hidden>Tirar música</button></div>
+        <div class="edrow" id="edMusicVolRow" hidden>🔉 Volume: <input type="range" id="edMusicVol" min="0" max="1.5" step="0.05" value="0.25" style="flex:1;min-width:120px"><span id="edMusicVolV">25%</span></div>
+        <div class="muted" style="font-size:12px">A música toca junto com o som do vídeo (baixinha ou alta, você escolhe) e some devagar no final. Aperte ▶ Tocar pra ouvir como fica.</div>
 
         <div id="edWmBox">
           <h3>💧 Marca d'água</h3>
@@ -548,22 +556,25 @@ function coverCrop(sx, sy, sw, sh, dw, dh){ const ar = dw / dh; let w = sw, h = 
 const FONT_CSS = { classica: '"Arial Black","Segoe UI Black",Arial,sans-serif', anton: '"CortesAnton",Impact,sans-serif',
   archivo: '"CortesArchivo","Arial Black",sans-serif', bangers: '"CortesBangers",Impact,sans-serif',
   luckiest: '"CortesLuckiest","Arial Black",sans-serif', bebas: '"CortesBebas",Impact,sans-serif' };
-const cleanTxt = t => (t || "").replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}]/gu, "").replace(/[^\p{L}\p{N}\s.,!?:;'"()\-\/@#%&+*_]/gu, "").replace(/\s+/g, " ").trim();
+const cleanTxt = t => (t || "").replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}]/gu, "").replace(/[^\p{L}\p{N}\s.,!?:;'"()\-\/@#%&+*_]/gu, "").replace(/[^\S\n]+/g, " ").replace(/ *\n */g, "\n").replace(/\n{2,}/g, "\n").trim();
 // estilo da faixa: { bg, fg, font }. Sem bg = sem faixa, letra com contorno
 function capStyle(sty){
   const S = (ST.styles || {}).cap || {}, k = sty && sty.cap, st = S[k] || { bg: "#ffffff", fg: "#000000" };
   return { bg: st.bg, fg: st.fg, font: (sty && sty.font) || "classica" };
 }
-function drawCaption(ctx, text, W, yCenter, alpha = 1, H = Infinity, sty = null){
+function drawCaption(ctx, text, W, yCenter, alpha = 1, H = Infinity, sty = null, scale = 1){
   text = cleanTxt(text).toUpperCase();
   if (!text) return null;
   const cs = capStyle(sty), fam = FONT_CSS[cs.font] || FONT_CSS.classica, big = cs.font === "anton" || cs.font === "bebas";
   const font = n => `${cs.font === "classica" ? "900 " : ""}${n}px ${fam}`, maxW = W * 0.92;
-  let size = Math.round(W * (big ? 0.066 : 0.056)), lines = [];
-  const wrap = () => { ctx.font = font(size); lines = []; let cur = "";
-    for (const w of text.split(" ")){ const t = cur ? cur + " " + w : w; if (ctx.measureText(t).width <= maxW || !cur) cur = t; else { lines.push(cur); cur = w; } }
-    if (cur) lines.push(cur); };
-  wrap(); while ((lines.length > 3 || lines.some(l => ctx.measureText(l).width > maxW)) && size > W * 0.03){ size -= 2; wrap(); }
+  scale = Math.max(0.5, Math.min(2, +scale || 1));
+  const paras = text.split("\n").filter(Boolean), maxL = Math.max(3, paras.length) + (scale > 1.15 ? 1 : 0);
+  let size = Math.round(W * (big ? 0.066 : 0.056) * scale), lines = [];
+  const wrap = () => { ctx.font = font(size); lines = [];
+    for (const para of paras){ let cur = "";
+      for (const w of para.split(" ")){ const t = cur ? cur + " " + w : w; if (ctx.measureText(t).width <= maxW || !cur) cur = t; else { lines.push(cur); cur = w; } }
+      if (cur) lines.push(cur); } };
+  wrap(); while ((lines.length > maxL || lines.some(l => ctx.measureText(l).width > maxW)) && size > W * 0.03){ size -= 2; wrap(); }
   const lh = size * 1.18, pad = size * 0.55, bh = lh * lines.length + pad * 2;
   const top = Math.max(0, Math.min(H - bh, yCenter - bh / 2));
   ctx.save(); ctx.globalAlpha = alpha;
@@ -633,7 +644,7 @@ function drawVertical(ctx, img, vw, vh, cam, W, H, caption, layout, opts = {}){
     }
   }
   if (opts.beforeCaption) opts.beforeCaption(ctx, W, H);
-  const capRect = drawCaption(ctx, caption, W, opts.capY != null ? opts.capY * H : yDef, opts.capAlpha ?? 1, H, opts.sty);
+  const capRect = drawCaption(ctx, caption, W, opts.capY != null ? opts.capY * H : yDef, opts.capAlpha ?? 1, H, opts.sty, opts.capSize ?? 1);
   let wmRect = null;
   if (opts.wm && opts.wm.img){        // Lower do campeonato, já sem fundo (mesmo tamanho do vídeo final)
     const im = opts.wm.img, iw = im.naturalWidth || im.width, ih = im.naturalHeight || im.height;
@@ -1072,6 +1083,8 @@ function openEditor(c){
   ED.game = { x: c.game_x ?? null, y: c.game_y ?? null, zoom: c.game_zoom ?? 1, fit: !!c.game_fit }; syncGame();
   try { ED.blurs = c.blurs ? JSON.parse(c.blurs) : []; } catch { ED.blurs = []; }
   ED.bsel = null; renderBz();
+  ED.capSize = c.cap_size || 1; syncCapSize();
+  ED.musicVol = c.music_vol ?? 0.25; ED.music = c.music_file || null; syncMusic();
   v.addEventListener("loadedmetadata", () => {
     const d = v.duration; ED.dur = d; if (ED.te == null || ED.te > d) ED.te = d; if (ED.te0 == null || ED.te0 > d) ED.te0 = d;
     for (const id of ["edTs", "edTe"]){ $("#" + id).max = d.toFixed(1); }
@@ -1156,7 +1169,44 @@ function edSty(){
   const pick = (id, k) => { const v = $(id).value; return v && v !== "auto" ? v : auto[k]; };
   return { cap: pick("#edCapStyle", "cap"), font: pick("#edCapFont", "font"), wm: pick("#edWmStyle", "wm") };
 }
-function closeEditor(){ cancelAnimationFrame(ED.raf); if (ED.v){ ED.v.pause(); ED.v.removeAttribute("src"); ED.v.load(); } ED.v = null; $("#editModal").hidden = true; }
+function syncCapSize(){ $("#edCapSize").value = ED.capSize; $("#edCapSizeV").textContent = Math.round(ED.capSize * 100) + "%"; }
+$("#edCapSize").oninput = e => { ED.capSize = +e.target.value; syncCapSize(); };
+$("#edCapSizeR").onclick = () => { ED.capSize = 1; syncCapSize(); };
+// música de fundo: toca junto na prévia (mesmo volume do vídeo final)
+const edAudio = new Audio(); edAudio.loop = true;
+function syncMusic(){
+  const has = !!ED.music;
+  $("#edMusicName").textContent = has ? "🎵 " + (ED.musicName || ED.music.split("/").pop()) : "Sem música";
+  $("#edMusicDel").hidden = !has; $("#edMusicVolRow").hidden = !has;
+  $("#edMusicVol").value = ED.musicVol; $("#edMusicVolV").textContent = Math.round(ED.musicVol * 100) + "%";
+  edAudio.volume = Math.min(1, ED.musicVol);
+  const src = has ? `/media/${ED.music}` : "";
+  if (edAudio.dataset.src !== src){ edAudio.pause(); edAudio.dataset.src = src; if (src) edAudio.src = src; else edAudio.removeAttribute("src"); }
+}
+function edMusicPlay(on){
+  if (!ED.music) return;
+  if (on && ED.v){ try { edAudio.currentTime = Math.max(0, ED.v.currentTime - ED.ts) % (edAudio.duration || 1e9); } catch {} edAudio.play().catch(() => {}); }
+  else edAudio.pause();
+}
+$("#edMusicVol").oninput = e => { ED.musicVol = +e.target.value; syncMusic(); };
+$("#edMusicFile").onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f || !ED.c) return;
+  if (f.size > 80 * 1024 * 1024) return toast("Essa música é grande demais (máx. 80 MB).");
+  $("#edMusicName").textContent = "Enviando a música…";
+  try {
+    const r = await fetch(`/api/clips/${ED.c.id}/music`, { method: "POST", body: f, headers: { "X-Filename": encodeURIComponent(f.name) } });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.detail || "Não deu pra enviar a música.");
+    ED.music = j.music_file; ED.musicName = f.name; ED.c.music_file = j.music_file; syncMusic();
+    toast("Música colocada! Ajuste o volume e aperte Salvar.");
+  } catch (err) { toast(err.message); syncMusic(); }
+};
+$("#edMusicDel").onclick = async () => {
+  if (!ED.c) return;
+  try { await fetch(`/api/clips/${ED.c.id}/music`, { method: "DELETE" }); } catch {}
+  ED.music = null; ED.c.music_file = null; syncMusic(); toast("Música tirada. Aperte Salvar pra refazer o vídeo sem ela.");
+};
+function closeEditor(){ edAudio.pause(); cancelAnimationFrame(ED.raf); if (ED.v){ ED.v.pause(); ED.v.removeAttribute("src"); ED.v.load(); } ED.v = null; $("#editModal").hidden = true; }
 function clipLen(){ return Math.max(0.5, (ED.te ?? 0) - ED.ts); }
 function syncEditor(){
   if (!ED.dur) return;
@@ -1181,12 +1231,12 @@ function syncEditor(){
 function edLoop(){
   const v = ED.v; if (!v) return;
   if (v.readyState >= 2 && ED.dur){
-    if (!v.paused && v.currentTime >= ED.te){ v.pause(); v.currentTime = ED.ts; $("#edPlay").textContent = "▶ Tocar"; }
+    if (!v.paused && v.currentTime >= ED.te){ v.pause(); edMusicPlay(false); v.currentTime = ED.ts; $("#edPlay").textContent = "▶ Tocar"; }
     const rel = v.currentTime - ED.ts, inWin = rel >= ED.ca && rel <= ED.cb;
     const c = ED.c, lay = c.layout_used || (c.cam ? "cam" : "game"), cv = $("#edCanvas");
     // fora do tempo do texto ele aparece apagadinho, só pra dar pra arrastar
     ED.rects = drawVertical(cv.getContext("2d"), v, v.videoWidth, v.videoHeight, lay === "cam" ? c.cam : null, cv.width, cv.height,
-      ED.on ? ED.text : "", lay, { capY: ED.capY, capAlpha: inWin ? 1 : 0.35, sty: edSty(), game: ED.game, beforeCaption: (cx, W, H) => drawCensors(cx, W, H, rel),
+      ED.on ? ED.text : "", lay, { capY: ED.capY, capAlpha: inWin ? 1 : 0.35, sty: edSty(), capSize: ED.capSize, game: ED.game, beforeCaption: (cx, W, H) => drawCensors(cx, W, H, rel),
         wm: ED.wm ? (ED.wm.lowerOf ? (lowerImg(ED.wm.lowerOf) ? { img: lowerImg(ED.wm.lowerOf), x: ED.wm.x, y: ED.wm.y, wf: ED.wm.lowerOf.lower_wf, auto: ED.wm.auto, set: p => Object.assign(ED.wm, p) } : null) : ED.wm) : null });
     $("#edTime").textContent = `${fmtT(v.currentTime)}  ·  no corte: ${fmtT(rel)} de ${fmtT(clipLen())}`;
     $("#edHead").style.left = `${(v.currentTime / ED.dur * 100).toFixed(2)}%`;
@@ -1196,8 +1246,8 @@ function edLoop(){
 $("#edClose").onclick = closeEditor;
 $("#edPlay").onclick = () => {
   const v = ED.v; if (!v) return;
-  if (v.paused){ if (v.currentTime < ED.ts || v.currentTime >= ED.te - 0.05) v.currentTime = ED.ts; v.play(); $("#edPlay").textContent = "⏸ Pausar"; }
-  else { v.pause(); $("#edPlay").textContent = "▶ Tocar"; }
+  if (v.paused){ if (v.currentTime < ED.ts || v.currentTime >= ED.te - 0.05) v.currentTime = ED.ts; v.play(); edMusicPlay(true); $("#edPlay").textContent = "⏸ Pausar"; }
+  else { v.pause(); edMusicPlay(false); $("#edPlay").textContent = "▶ Tocar"; }
 };
 $("#edTl").addEventListener("pointerdown", e => {
   if (!ED.dur) return; const r = $("#edTl").getBoundingClientRect();
@@ -1275,7 +1325,7 @@ async function saveEditor(reset){
   const c = ED.c; if (!c) return;
   const body = reset
     ? { trim_start: null, trim_end: null, cap_start: null, cap_end: null, cap_y: null, wm_x: null, wm_y: null, subs_on: null, zoom_on: null, sub_y: null,
-        cap_style: null, cap_font: null, wm_style: null, blurs: null, game_x: null, game_y: null, game_zoom: null, game_fit: null }
+        cap_style: null, cap_font: null, wm_style: null, blurs: null, game_x: null, game_y: null, game_zoom: null, game_fit: null, cap_size: null }
     : { ...(Math.abs(ED.ts - ED.ts0) < 0.05 && Math.abs(ED.te - ED.te0) < 0.05
           ? { trim_start: null, trim_end: null }          // não mexeu: continua seguindo o estilo do corte
           : { trim_start: +ED.ts.toFixed(2), trim_end: +ED.te.toFixed(2) }),
@@ -1283,6 +1333,7 @@ async function saveEditor(reset){
         cap_style: $("#edCapStyle").value, cap_font: $("#edCapFont").value, wm_style: $("#edWmStyle").value,
         game_x: ED.game.x != null ? +ED.game.x.toFixed(4) : null, game_y: ED.game.y != null ? +ED.game.y.toFixed(4) : null,
         game_zoom: ED.game.zoom && ED.game.zoom > 1.001 ? +(+ED.game.zoom).toFixed(3) : null, game_fit: ED.game.fit ? true : null,
+        cap_size: Math.abs((ED.capSize || 1) - 1) > 0.01 ? +(+ED.capSize).toFixed(2) : null, music_vol: +(+ED.musicVol).toFixed(2),
         blurs: (ED.blurs || []).map(b => ({ x: +b.x.toFixed(4), y: +b.y.toFixed(4), w: +b.w.toFixed(4), h: +b.h.toFixed(4), t0: b.t0 ?? 0, t1: (b.t1 ?? 9999) >= clipLen() - 0.05 ? 9999 : b.t1, kind: b.kind || "blur" })),
         cap_start: +ED.ca.toFixed(2), cap_end: ED.cb >= 9000 ? 9999 : +ED.cb.toFixed(2),
         cap_y: ED.capY, wm_x: ED.wm && !ED.wm.auto ? +ED.wm.x.toFixed(3) : null, wm_y: ED.wm && !ED.wm.auto ? +ED.wm.y.toFixed(3) : null,

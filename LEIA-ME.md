@@ -179,6 +179,9 @@ Só os seus aparelhos conseguem abrir.
   Fontes: Anton, Archivo Black, Bangers, Bebas Neue (licença OFL) e Luckiest Guy (licença Apache), em app/static/fonts.
 - **🎮 Parte de baixo (jogo/vídeo):** no ✂ Editar corte, arraste a imagem de baixo na prévia pra escolher o pedaço que
   aparece, use o Zoom pra aproximar, ou marque "Mostrar a tela inteira" (sem cortar, com fundo borrado).
+- **🎵 Música de fundo:** no ✂ Editar corte, "📁 Escolher música" (MP3, M4A, WAV...) e ajuste o volume na barrinha.
+  Ela toca junto com o som do vídeo e some devagar no final.
+- **🔠 Tamanho da letra e quebra de linha:** barrinha de tamanho do título; Enter (ou Shift+Enter) no texto joga pra linha de baixo.
 - **🔞 Censura:** no ✂ Editar corte, "+ Censurar uma parte" põe um quadrado borrado, pixelado ou tarja preta onde você
   arrastar, no tempo que escolher (vários por corte). Fica por baixo do título e da marca d'água. Vale no vertical.
 - **📤 Enviar um corte seu:** manda um trecho que você cortou e ele sai no mesmo formato dos automáticos.

@@ -782,6 +782,8 @@ class EditIn(BaseModel):
     game_y: float | None = None
     game_zoom: float | None = None
     game_fit: bool | None = None      # mostrar a tela inteira (com fundo borrado)
+    cap_size: float | None = None     # tamanho da letra do título (1 = normal)
+    music_vol: float | None = None    # volume da música de fundo (0 a 2)
     cap_style: str | None = None      # "auto" ou vazio = varia sozinho
     cap_font: str | None = None
     wm_style: str | None = None
@@ -1167,6 +1169,39 @@ def retext(clip_id: int):
     return {"ok": True}
 
 
+MUSIC_EXT = (".mp3", ".m4a", ".aac", ".wav", ".ogg", ".opus", ".flac", ".mp4", ".webm")
+
+
+@app.post("/api/clips/{clip_id}/music")
+async def clip_music_upload(clip_id: int, request: Request):
+    """Música de fundo do corte (você escolhe o arquivo no editor)."""
+    c = _clip(clip_id)
+    name = urllib.parse.unquote(request.headers.get("x-filename", "musica.mp3"))
+    ext = ("." + name.rsplit(".", 1)[-1].lower()) if "." in name else ""
+    if ext not in MUSIC_EXT:
+        raise HTTPException(400, f"Formato {ext or '?'} não serve. Envie MP3, M4A, WAV, OGG ou AAC.")
+    data = await request.body()
+    if len(data) < 2000:
+        raise HTTPException(400, "O arquivo veio vazio. Tente de novo.")
+    d = C.CLIPS_DIR / "musicas"
+    d.mkdir(parents=True, exist_ok=True)
+    if c.get("music_file"):
+        procs.safe_unlink(C.CLIPS_DIR / c["music_file"])
+    f = d / f"corte{clip_id}_{int(time.time())}{ext}"
+    f.write_bytes(data)
+    db.update("clips", clip_id, {"music_file": rel(f), "music_vol": c.get("music_vol") or 0.25})
+    return {"ok": True, "music_file": rel(f), "name": name}
+
+
+@app.delete("/api/clips/{clip_id}/music")
+def clip_music_delete(clip_id: int):
+    c = _clip(clip_id)
+    if c.get("music_file"):
+        procs.safe_unlink(C.CLIPS_DIR / c["music_file"])
+    db.update("clips", clip_id, {"music_file": None})
+    return {"ok": True}
+
+
 @app.get("/api/clips/{clip_id}/baixar")
 def clip_download(clip_id: int):
     """Baixar o vertical como DOWNLOAD de verdade (o iPhone, pelo endereço do PC, só abria o vídeo em vez de baixar)."""
@@ -1219,7 +1254,7 @@ def clip_frame(clip_id: int, t: float = 10):
 
 
 def _clip_files(c):
-    files = [C.CLIPS_DIR / c[k] for k in ("file_h", "file_v", "file_hw", "thumb") if c.get(k)]
+    files = [C.CLIPS_DIR / c[k] for k in ("file_h", "file_v", "file_hw", "thumb", "music_file") if c.get(k)]
     if c.get("file_h"):
         h = C.CLIPS_DIR / c["file_h"]
         files += [h.with_name(h.name.replace("_h.mp4", s)) for s in ("_v.mp4", "_hw.mp4", ".jpg", ".srt", "_v.novo.mp4")]
