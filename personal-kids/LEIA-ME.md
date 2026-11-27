@@ -9,6 +9,7 @@ pip install pillow
 python gerar_post.py              # post de hoje
 python gerar_post.py 2026-12-24   # post de uma data
 python gerar_post.py --semana     # 7 posts a partir de hoje
+python gerar_post.py --divulgacao # post de divulgação das aulas (saida/divulgacao/)
 ```
 Os arquivos saem em `saida/AAAA-MM-DD/`: `post.png` (feed 4:5), `story.png` (stories) e `legenda.txt`.
 

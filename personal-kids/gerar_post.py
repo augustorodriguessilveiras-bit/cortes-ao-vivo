@@ -4,6 +4,7 @@ Uso:
     python gerar_post.py                 # post de hoje
     python gerar_post.py 2026-12-01      # post de uma data específica
     python gerar_post.py --semana        # os 7 posts a partir de hoje
+    python gerar_post.py --divulgacao    # post de divulgação das aulas
 
 Saída (pasta saida/AAAA-MM-DD/):
     post.png      -> imagem do feed (1080x1350, formato 4:5)
@@ -118,11 +119,11 @@ def desenhar(dia, post, tema, W, H):
 
     # Logo original num "adesivo" branco
     logo = Image.open(ASSETS / "logo.png").convert("RGB")
-    lw = int(W * (0.52 if H < 1600 else 0.62))
+    lw = int(W * ((0.42 if post.get("cta") else 0.52) if H < 1600 else 0.62))
     lh = int(logo.height * lw / logo.width)
     logo = logo.resize((lw, lh), Image.LANCZOS)
     pad = 28
-    ly = 60 if H < 1600 else 140
+    ly = (50 if post.get("cta") else 60) if H < 1600 else 140
     lx = (W - lw) // 2
     d.rounded_rectangle((lx - pad + 6, ly - pad + 10, lx + lw + pad + 6, ly + lh + pad + 10),
                         60, fill=(230, 222, 205))
@@ -139,25 +140,32 @@ def desenhar(dia, post, tema, W, H):
 
     frase = not post["itens"]
     story = H >= 1600
-    tam = (96 if story else 82) if frase else (88 if story else 70)
+    cta = post.get("cta")
+    fim_cartao = H - (290 if cta else 150) - (60 if cta and story else 0)
+    escala = 1.0
+    # Diminui as letras até tudo caber no cartão
     while True:
-        f_tit = fonte("Fredoka", tam, 600)
-        linhas = quebrar(d, post["titulo"], f_tit, W - 2 * margem - 60)
-        if len(linhas) <= (5 if frase else 3) or tam <= 46:
+        tam = int(((96 if story else 82) if frase else (88 if story else 70)) * escala)
+        while True:
+            f_tit = fonte("Fredoka", tam, 600)
+            linhas = quebrar(d, post["titulo"], f_tit, W - 2 * margem - 60)
+            if len(linhas) <= (5 if frase else 3) or tam <= 40:
+                break
+            tam -= 4
+        alt_linha = int(tam * 1.15)
+        f_item = fonte("Nunito", int((58 if story else 46) * escala), 800)
+        li = int((72 if story else 58) * escala)
+        esp = int(34 * escala)
+        itens_linhas = [quebrar(d, it, f_item, W - 2 * margem - 150) for it in post["itens"]]
+        altura_itens = sum(len(l) * li + esp for l in itens_linhas)
+        bloco = len(linhas) * alt_linha + (30 + altura_itens if not frase else 0)
+        if bloco <= fim_cartao - y - 70 or escala < 0.6:
             break
-        tam -= 4
-    alt_linha = int(tam * 1.15)
+        escala -= 0.05
 
-    # Cartão branco com o conteúdo
-    f_item = fonte("Nunito", 58 if story else 46, 800)
-    li = 72 if story else 58
-    itens_linhas = [quebrar(d, it, f_item, W - 2 * margem - 150) for it in post["itens"]]
-    altura_itens = sum(len(l) * li + 34 for l in itens_linhas)
-    fim_cartao = H - 150
     d.rounded_rectangle((margem - 20, y, W - margem + 20, fim_cartao), 50, fill=CORES["branco"],
                         outline=cor_tema, width=6)
 
-    bloco = len(linhas) * alt_linha + (30 + altura_itens if not frase else 0)
     ty = y + (fim_cartao - y - bloco) / 2
     if frase:
         d.text((W / 2, ty - 40), "“", font=fonte("Fredoka", 180, 700), fill=cor_tema, anchor="mm")
@@ -171,12 +179,26 @@ def desenhar(dia, post, tema, W, H):
             c = CORES[CONFETE[(n + 2) % len(CONFETE)]]
             cx = margem + 60
             d.ellipse((cx - 30, ty - 2, cx + 30, ty + 58), fill=c)
-            d.text((cx, ty + 28), str(n + 1), font=fonte("Fredoka", 38, 600), fill=CORES["branco"], anchor="mm")
+            if post.get("marcador") == "check":
+                d.line([(cx - 14, ty + 30), (cx - 4, ty + 40), (cx + 15, ty + 16)], fill=CORES["branco"],
+                       width=8, joint="curve")
+            else:
+                d.text((cx, ty + 28), str(n + 1), font=fonte("Fredoka", 38, 600), fill=CORES["branco"], anchor="mm")
             for k, ln in enumerate(ls):
                 d.text((cx + 60, ty + 28 + k * li), ln, font=f_item, fill=CORES["texto"], anchor="lm")
-            ty += len(ls) * li + 34
+            ty += len(ls) * li + esp
 
     confetes(d, W, H, dia.toordinal(), (margem - 40, ly - pad - 20, W - margem + 40, H - 40))
+
+    # Botão de chamada (posts de divulgação)
+    if cta:
+        f_cta = fonte("Fredoka", 50 if story else 44, 700)
+        cw = d.textlength(cta, font=f_cta) + 100
+        by = fim_cartao + (55 if story else 35)
+        bh = 100 if story else 90
+        d.rounded_rectangle(((W - cw) / 2 + 6, by + 8, (W + cw) / 2 + 6, by + bh + 8), bh / 2, fill=(200, 50, 60))
+        d.rounded_rectangle(((W - cw) / 2, by, (W + cw) / 2, by + bh), bh / 2, fill=CORES["vermelho"])
+        d.text((W / 2, by + bh / 2), cta, font=f_cta, fill=CORES["branco"], anchor="mm")
 
     # Rodapé
     f_rod = fonte("Fredoka", 38, 500)
@@ -215,8 +237,26 @@ def gerar(dia):
     return pasta, horario, tema["nome"], post["titulo"]
 
 
+def gerar_divulgacao():
+    post, tema = conteudo.DIVULGACAO, {"nome": "AULAS DE PERSONAL KIDS", "cor": "roxo"}
+    pasta = SAIDA / "divulgacao"
+    pasta.mkdir(parents=True, exist_ok=True)
+    hoje = date.today()
+    desenhar(hoje, post, tema, 1080, 1350).save(pasta / "post.png", optimize=True)
+    desenhar(hoje, post, tema, 1080, 1920).save(pasta / "story.png", optimize=True)
+    hashtags = " ".join(conteudo.HASHTAGS_FIXAS + ["#personaltrainer", "#aulaexperimental", "#esporteinfantil"])
+    (pasta / "legenda.txt").write_text(
+        f"⏰ Melhor horário para postar: {conteudo.HORARIO_DIVULGACAO}\n"
+        f"🏷️ Post de divulgação (fixe no topo do perfil!)\n\n"
+        f"===== LEGENDA (copie daqui para baixo) =====\n\n"
+        f"{post['legenda']}\n\n{hashtags}\n", encoding="utf-8")
+    print(f"divulgação -> {pasta}")
+
+
 def main():
     args = sys.argv[1:]
+    if args and args[0] == "--divulgacao":
+        return gerar_divulgacao()
     if args and args[0] == "--semana":
         dias = [date.today() + timedelta(days=i) for i in range(7)]
     elif args:

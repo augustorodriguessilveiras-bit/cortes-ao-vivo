@@ -233,3 +233,30 @@ HASHTAGS_TEMA = {
     5: ["#dicaparapais", "#maternidade", "#paternidade"],
     6: ["#motivacao", "#bomdomingo", "#familia"],
 }
+
+# Post de divulgação das aulas (python gerar_post.py --divulgacao)
+HORARIO_DIVULGACAO = "Terça, quarta ou quinta às 19:30"
+DIVULGACAO = {
+    "titulo": "Seu filho mais ativo, forte e feliz!",
+    "marcador": "check",
+    "itens": [
+        "Aulas personalizadas para cada idade",
+        "Treino em forma de brincadeira",
+        "Coordenação, força e equilíbrio",
+        "Mais confiança e autoestima",
+        "Acompanhamento de perto",
+    ],
+    "cta": "AGENDE UMA AULA EXPERIMENTAL",
+    "legenda": (
+        "🎉 Chegou a hora do seu filho trocar a tela pelo movimento!\n\n"
+        "No JP Personal Kids, cada aula é pensada para a idade e o ritmo da criança, "
+        "com exercícios em forma de brincadeira que desenvolvem:\n\n"
+        "✅ Coordenação motora\n"
+        "✅ Força e equilíbrio\n"
+        "✅ Confiança e autoestima\n"
+        "✅ Hábitos saudáveis para a vida toda\n\n"
+        "Aqui, o melhor treino é aquele que parece brincadeira! 💛\n\n"
+        "📲 Agende uma AULA EXPERIMENTAL: é só chamar no direct ou comentar \"EU QUERO\" que a gente te responde!\n\n"
+        "👉 Marque aqui um pai ou mãe que precisa conhecer o Personal Kids!"
+    ),
+}
